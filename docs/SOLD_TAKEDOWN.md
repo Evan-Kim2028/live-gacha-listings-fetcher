@@ -4,7 +4,7 @@ How listings leave the live book on the **Solana-native** path: poll-diff is pri
 
 **Scope:** `createSolanaProviders()` defaults — `collectorcrypt`, `magiceden` (`collector_crypt`), `phygitals`. Beezie is **opt-in EVM** (`includeBeezie` / `includeEvm`), not Solana-native. traded.gg SSE is **not** on this path; it remains the only source of explicit `closed` wire events.
 
-**Primary code:** `src/sync.ts` (`syncOnce`), `src/store.ts` (`replaceScopeSnapshot`, soft-fail paths), `src/orderbook/OrderbookFeed.ts` (`refreshAsks` / `syncAsksFromListings`), `src/capture/types.ts` + `RunCapture.onSold`, `examples/runtime-monitor.ts`.
+**Primary code:** `src/sync.ts` (`syncOnce`), `src/store.ts` (`replaceScopeSnapshot`, soft-fail paths), `src/lifecycle/delist.ts` (`applyDelistsFromSync`), `src/aggregate/MultiSourceRadar.ts` + `PollEngine` (call apply after each `SyncResult` with `pruned > 0`), `src/orderbook/OrderbookFeed.ts` (`refreshAsks` / `syncAsksFromListings`, sold `reason: delisted_or_sold`), `src/capture/types.ts` + `RunCapture.onSold`, `examples/runtime-monitor.ts`.
 
 ---
 
@@ -139,13 +139,17 @@ These would reduce detect latency vs poll interval; they must still respect soft
 ## End-to-end (runtime monitor)
 
 ```
-PollEngine tick
+PollEngine tick (createSolanaProviders — no Beezie unless includeBeezie)
   → syncOnce per origin (scoped upsert+prune or soft/incomplete no-prune)
+  → if pruned > 0: applyDelistsFromSync(result, orderbook, capture)
+      → DelistEvent(reason=missing_from_full_snapshot, source=poll_diff)
+      → clear ask / residual bids; RunCapture.onSold(reason=delisted_or_sold|ask_removed)
+      → onDelist log lines
   → RunCapture listing diffs (new / reprice / closed / soft_fail)
-  → OrderbookFeed.refreshAsks()
-      → remove asks for gone listings
-      → if instrument ask count == 0: clear bids, emit sold(lastBestBid, lastBestAsk)
+  → OrderbookFeed.refreshAsks() (reconcile residual sold)
   → RunCapture.onSold → sold.jsonl (+ events.jsonl mirror)
 ```
 
-See `examples/runtime-monitor.ts` (`--bootstrap` warm full re-walk so prune/sold is correct), `docs/BOOTSTRAP_FULL_BOOK.md`, `docs/RUNTIME_PROOF.md`, `docs/NATIVE_SOURCES.md`.
+Same delist apply runs on `MultiSourceRadar.syncAll` / `bootstrapAll` when `pruned > 0`.
+
+See `examples/runtime-monitor.ts` (`--bootstrap` warm full re-walk so prune/sold is correct), `docs/BOOTSTRAP_FULL_BOOK.md`, `docs/TRADER_EXPERIENCE.md`, `docs/RUNTIME_PROOF.md`, `docs/NATIVE_SOURCES.md`.

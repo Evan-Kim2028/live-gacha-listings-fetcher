@@ -44,17 +44,17 @@ npx tsx src/cli.ts bootstrap --solana --resume --poll --seconds 60
 | `data/books/` | Resume cache of the current full listing book |
 | `data/runs/<id>/` | Live deltas: `events.jsonl`, `books.jsonl`, `sold.jsonl`, `health.jsonl`, `snapshots/` |
 
-Docs: [`docs/BOOTSTRAP_FULL_BOOK.md`](docs/BOOTSTRAP_FULL_BOOK.md) · [`docs/RUNTIME_PROOF.md`](docs/RUNTIME_PROOF.md) · [`docs/NATIVE_SOURCES.md`](docs/NATIVE_SOURCES.md) · [`docs/DEEP_LINKS.md`](docs/DEEP_LINKS.md)
+Docs: [`docs/BOOTSTRAP_FULL_BOOK.md`](docs/BOOTSTRAP_FULL_BOOK.md) · [`docs/SOLD_TAKEDOWN.md`](docs/SOLD_TAKEDOWN.md) · [`docs/RUNTIME_PROOF.md`](docs/RUNTIME_PROOF.md) · [`docs/NATIVE_SOURCES.md`](docs/NATIVE_SOURCES.md) · [`docs/DEEP_LINKS.md`](docs/DEEP_LINKS.md)
 
 ### Sold / delisted
 
-On each warm pull, if an id leaves a provider’s page set, the store prunes it (`closed`). The orderbook then:
+On each warm pull, if an id leaves a provider’s full page set, the store prunes it (`closed`). `MultiSourceRadar.syncAll` / `PollEngine` then run `applyDelistsFromSync` when `pruned > 0` (orderbook clear + optional `RunCapture.onSold`). Product model: [`docs/SOLD_TAKEDOWN.md`](docs/SOLD_TAKEDOWN.md).
 
-- removes that ask
-- if the instrument has no asks left, clears all bids on that instrument
+- removes that ask; reason on DelistEvent is `missing_from_full_snapshot` (poll_diff)
+- if the instrument has no asks left, clears residual bids and records sold with `reason: delisted_or_sold`
 - appends `sold.jsonl` with `lastBestAsk` / `lastBestBid` (last known top-of-book)
 
-Poll cannot always prove on-chain fill price. `lastBestAsk` is the listed price when the row vanished. True fill price needs marketplace trade history or chain events.
+Poll cannot always prove on-chain fill price. Soft-fail empty / incomplete pages never prune. Default Solana set only (CC + ME `collector_crypt` + Phygitals); Beezie is opt-in (`includeBeezie` / `includeEvm`).
 
 ### Smoke commands
 

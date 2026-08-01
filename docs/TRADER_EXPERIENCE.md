@@ -2,6 +2,8 @@
 
 Read-only surfaces for host UIs and operators: alerts, watchlist, health, listing age, deep-links, and origin-only FMV. Core never buys, lists, offers, or signs transactions.
 
+**Sold / delisted (leave-book):** poll-diff prune → `applyDelistsFromSync` → orderbook clear + `sold.jsonl` (`delisted_or_sold`). Soft-fail never wipes inventory. See [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
+
 ## Alerts (`src/trader/alerts.ts`)
 
 `AlertEngine` diffs scope listings into trader events:

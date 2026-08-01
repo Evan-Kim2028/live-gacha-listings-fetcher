@@ -47,10 +47,10 @@ export { querySignature, scopeKey } from "./querySignature.js";
 export {
   applyDelistsFromSync,
   type DelistReason,
+  type SoldReason,
   type DelistSource,
   type DelistEvent,
 } from "./lifecycle/index.js";
-
 export type {
   ListingsProvider,
   PullPage,

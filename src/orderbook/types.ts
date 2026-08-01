@@ -9,6 +9,8 @@
  *  - local synthesis of ask-side books from listing streams
  */
 
+import type { SoldReason } from "../lifecycle/delist.js";
+
 export type OrderSide = "bid" | "ask";
 
 export interface OrderLevel {
@@ -75,6 +77,9 @@ export type BidStreamWire =
  * delisted). `lastBestBid` / `lastBestAsk` are the top-of-book **before**
  * clear — poll path cannot always prove on-chain sale price; last ask is
  * the best proxy for "listed at when it disappeared."
+ *
+ * `reason` aligns with {@link SoldReason} / {@link DelistReason}:
+ * instrument zero asks after prune → `delisted_or_sold`.
  */
 export interface InstrumentSoldEvent {
   kind: "sold";
@@ -87,7 +92,8 @@ export interface InstrumentSoldEvent {
   currency?: string;
   /** Listing ids that left the ask side this tick (if known). */
   listingIds?: string[];
-  reason: "delisted_or_sold" | "ask_removed";
+  /** Same codes as lifecycle {@link SoldReason} (`delisted_or_sold` | `ask_removed`). */
+  reason: SoldReason;
 }
 
 export type OrderbookEvent =

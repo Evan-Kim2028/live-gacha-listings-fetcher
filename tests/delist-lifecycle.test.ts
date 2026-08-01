@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MultiSourceRadar } from "../src/aggregate/MultiSourceRadar.js";
+import { PollEngine } from "../src/aggregate/PollEngine.js";
 import { RunCapture } from "../src/capture/RunCapture.js";
 import {
   applyDelistsFromSync,
@@ -439,5 +441,97 @@ describe("Phygitals delist path (soft-fail safety + listed shrink prune)", () =>
     expect(book.allBids().filter((x) => x.instrumentKey === bKey)).toHaveLength(
       0,
     );
+  });
+});
+
+describe("MultiSourceRadar + PollEngine applyDelistsFromSync on pruned>0", () => {
+  it("MultiSourceRadar.syncAll returns delists and calls onDelist + capture", async () => {
+    const a = listingStub("radar_delist", "a", 10);
+    const b = listingStub("radar_delist", "b", 20);
+    let phase: "full" | "smaller" = "full";
+    const provider = mutableProvider("radar_delist", () => {
+      if (phase === "full") return page("radar_delist", [a, b]);
+      return page("radar_delist", [a], { builtAt: "gen-a" });
+    });
+
+    const book = new OrderbookStore();
+    const runDir = mkdtempSync(join(tmpdir(), "radar-delist-"));
+    const capture = RunCapture.open(runDir);
+    const seen: DelistEvent[] = [];
+
+    const radar = new MultiSourceRadar({
+      providers: [provider],
+      orderbook: book,
+      capture,
+      onDelist: (events) => {
+        seen.push(...events);
+      },
+    });
+
+    await radar.syncAll();
+    book.upsertAsk(listingToAsk(a));
+    book.upsertAsk(listingToAsk(b));
+
+    phase = "smaller";
+    const r = await radar.syncAll();
+    expect(r.results[0]!.pruned).toBe(1);
+    expect(r.delists).toHaveLength(1);
+    expect(r.delists[0]).toMatchObject({
+      listingId: b.id,
+      reason: "missing_from_full_snapshot",
+      source: "poll_diff",
+    });
+    expect(seen).toHaveLength(1);
+    expect(book.getAsk(`ask:${b.id}`)).toBeUndefined();
+    const sold = readSoldJsonl(runDir);
+    expect(sold.some((s) => s.listingIds?.includes(b.id))).toBe(true);
+    capture.close();
+  });
+
+  it("PollEngine emitSync applies delists before onSync when pruned>0", async () => {
+    const a = listingStub("poll_delist", "a", 10);
+    const b = listingStub("poll_delist", "b", 20);
+    let phase: "full" | "smaller" = "full";
+    const provider = mutableProvider("poll_delist", () => {
+      if (phase === "full") return page("poll_delist", [a, b]);
+      return page("poll_delist", [a], { builtAt: "gen-a" });
+    });
+
+    const store = new ListingStore();
+    const book = new OrderbookStore();
+    const runDir = mkdtempSync(join(tmpdir(), "poll-delist-"));
+    const capture = RunCapture.open(runDir);
+    const delistLog: DelistEvent[] = [];
+    let onSyncSawPruned = 0;
+    let bookClearedBeforeOnSync = false;
+
+    const engine = new PollEngine({
+      store,
+      providers: [provider],
+      orderbook: book,
+      capture,
+      onDelist: (events) => {
+        delistLog.push(...events);
+      },
+      onSync: (_id, result) => {
+        onSyncSawPruned = result.pruned;
+        // applyDelists runs before onSync — pruned ask already gone
+        bookClearedBeforeOnSync = book.getAsk(`ask:${b.id}`) === undefined;
+      },
+    });
+
+    await engine.syncNow();
+    book.upsertAsk(listingToAsk(a));
+    book.upsertAsk(listingToAsk(b));
+
+    phase = "smaller";
+    await engine.syncNow();
+    expect(onSyncSawPruned).toBe(1);
+    expect(delistLog).toHaveLength(1);
+    expect(delistLog[0]!.reason).toBe("missing_from_full_snapshot");
+    expect(bookClearedBeforeOnSync).toBe(true);
+    const sold = readSoldJsonl(runDir);
+    expect(sold.some((s) => s.listingIds?.includes(b.id))).toBe(true);
+    capture.close();
   });
 });

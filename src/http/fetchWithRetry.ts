@@ -35,9 +35,13 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** True for rate-limit and server errors that are safe to retry. */
+/**
+ * True for rate-limit / transient blocks and server errors that are safe to retry.
+ * Includes 403: public marketplace CDNs often use 403 for short WAF/rate windows
+ * (Collector Crypt live); permanent ACL 403 still fails after maxRetries.
+ */
 export function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
+  return status === 429 || status === 403 || status >= 500;
 }
 
 /** HTTP 304 Not Modified (conditional GET / ETag hit). */

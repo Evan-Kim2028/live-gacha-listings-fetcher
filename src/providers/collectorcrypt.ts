@@ -619,11 +619,14 @@ export class CollectorCryptProvider implements ListingsProvider {
 
   constructor(opts: CollectorCryptOptions = {}) {
     this.baseUrl = opts.baseUrl ?? DEFAULT_BASE;
-    this.userAgent = opts.userAgent ?? "traded-listings/0.3 (+collectorcrypt)";
+    // Browser-like UA reduces CDN/WAF 403 rate windows on warm multi-page pulls.
+    this.userAgent =
+      opts.userAgent ??
+      "Mozilla/5.0 (compatible; live-gacha-listings-fetcher/0.1; +https://github.com/Evan-Kim2028/live-gacha-listings-fetcher)";
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.defaultStep = clampStep(opts.defaultStep, 50);
-    this.maxRetries = opts.maxRetries ?? 3;
-    this.retryDelayMs = opts.retryDelayMs ?? 500;
+    this.maxRetries = opts.maxRetries ?? 4;
+    this.retryDelayMs = opts.retryDelayMs ?? 800;
     this.pageConcurrency = opts.pageConcurrency ?? DEFAULT_PAGE_CONCURRENCY;
     // Default Solana for radar; explicit null disables the filter.
     this.blockchain =

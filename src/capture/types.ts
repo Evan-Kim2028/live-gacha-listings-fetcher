@@ -1,5 +1,6 @@
-import type { Listing, ProviderWatermark, SyncResult } from "../types.js";
+import type { SoldReason } from "../lifecycle/delist.js";
 import type { InstrumentBook } from "../orderbook/types.js";
+import type { Listing, ProviderWatermark, SyncResult } from "../types.js";
 
 /** Fields used for delta equality (id is the key). */
 export interface ListingDeltaFields {
@@ -94,6 +95,9 @@ export interface BookChangeRecord {
 /**
  * Instrument left the live book (listing pruned). Last bid/ask are pre-clear
  * top-of-book — not always proven on-chain sale price.
+ *
+ * `reason` aligns with lifecycle {@link SoldReason} / DelistReason subset
+ * (`delisted_or_sold` when instrument asks hit zero after prune).
  */
 export interface SoldRecord {
   ts: string;
@@ -103,7 +107,7 @@ export interface SoldRecord {
   lastBestAsk: number | null;
   currency?: string;
   listingIds?: string[];
-  reason: "delisted_or_sold" | "ask_removed";
+  reason: SoldReason;
 }
 
 export interface OnSyncExtra {

@@ -24,7 +24,7 @@ npx tsx examples/runtime-monitor.ts --bootstrap --resume --seconds 3600
 
 Also documented in root `README.md` (Quick start: full book seed).
 
-**Sold / delisted:** when a listing leaves a provider page, the store prunes it (`closed`); the orderbook clears asks **and** residual bids for that instrument; `sold.jsonl` records `lastBestAsk` / `lastBestBid` (last known TOB, not always a proven on-chain fill price).
+**Sold / delisted:** when a listing leaves a provider page, the store prunes it (`closed`); `MultiSourceRadar` / `PollEngine` call `applyDelistsFromSync` when `pruned > 0` so the orderbook clears asks **and** residual bids and `sold.jsonl` records `lastBestAsk` / `lastBestBid` (last known TOB, not a proven on-chain fill). Full product model: [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
 
 ## Goal
 

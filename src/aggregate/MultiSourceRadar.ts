@@ -9,10 +9,20 @@
  * Cold full book: {@link bootstrapAll} sets `bootstrap: true` so providers
  * paginate via pullAll (docs/BOOTSTRAP_FULL_BOOK.md).
  *
+ * After each provider SyncResult with `pruned > 0`, runs
+ * {@link applyDelistsFromSync} (orderbook clear + optional capture sold).
+ * See docs/SOLD_TAKEDOWN.md.
+ *
  * Optional FMV: {@link MultiSourceRadarOptions.fmvPlugins} (default []).
  * Runs after {@link syncAll} (store write-back) and/or {@link list} with
  * `enrichFmv: true`. Origin fmv wins; no traded.gg FMV dependency.
  */
+import type { RunCapture } from "../capture/RunCapture.js";
+import {
+  applyDelistsFromSync,
+  type DelistEvent,
+} from "../lifecycle/delist.js";
+import type { OrderbookStore } from "../orderbook/OrderbookStore.js";
 import type { PullQuery } from "../providers/types.js";
 import type { ListingsProvider } from "../providers/types.js";
 import {
@@ -54,6 +64,19 @@ export interface MultiSourceRadarOptions {
    * and on {@link list} with `enrichFmv: true`. No default network oracle.
    */
   fmvPlugins?: FmvProvider[];
+  /**
+   * Optional book for poll-diff delist after each SyncResult with pruned>0.
+   * See {@link applyDelistsFromSync} / docs/SOLD_TAKEDOWN.md.
+   */
+  orderbook?: OrderbookStore;
+  /**
+   * Optional capture: pruned ids write sold.jsonl via applyDelistsFromSync.
+   */
+  capture?: RunCapture;
+  /**
+   * Fired once per provider result that produced DelistEvents (pruned>0).
+   */
+  onDelist?: (events: DelistEvent[], result: SyncResult) => void;
 }
 
 /** Options for {@link MultiSourceRadar.list}. */
@@ -79,6 +102,11 @@ export interface MultiSourceSyncResult {
   query: PullQuery;
   /** Per-provider soft-fail messages (e.g. Phygitals 500). */
   errors: Record<string, string>;
+  /**
+   * Delist events from SyncResults with pruned>0
+   * ({@link applyDelistsFromSync}; empty when no prunes).
+   */
+  delists: DelistEvent[];
 }
 
 /** Options for cold full-book fan-out ({@link MultiSourceRadar.bootstrapAll}). */
@@ -103,6 +131,12 @@ export class MultiSourceRadar {
   readonly watchlist: Watchlist;
   /** FMV plugins (default empty). See {@link MultiSourceRadarOptions.fmvPlugins}. */
   readonly fmvPlugins: readonly FmvProvider[];
+  private readonly orderbook?: OrderbookStore;
+  private readonly capture?: RunCapture;
+  private readonly onDelist?: (
+    events: DelistEvent[],
+    result: SyncResult,
+  ) => void;
 
   constructor(opts: MultiSourceRadarOptions = {}) {
     this.store = opts.store ?? new ListingStore();
@@ -115,6 +149,9 @@ export class MultiSourceRadar {
       ? { ...base }
       : { ...base, watchlist };
     this.fmvPlugins = opts.fmvPlugins ?? [];
+    this.orderbook = opts.orderbook;
+    this.capture = opts.capture;
+    this.onDelist = opts.onDelist;
   }
 
   /**
@@ -169,6 +206,17 @@ export class MultiSourceRadar {
         }
       }
     }
+    // Poll-diff delist lifecycle: after each full warm/cold apply with prunes
+    const delists: DelistEvent[] = [];
+    for (const r of results) {
+      const prunedN = r.pruned ?? r.prunedIds?.length ?? 0;
+      if (prunedN <= 0) continue;
+      const events = applyDelistsFromSync(r, this.orderbook, this.capture);
+      if (events.length === 0) continue;
+      delists.push(...events);
+      this.onDelist?.(events, r);
+    }
+
     // Optional FMV plugins after sync (origin fmv wins; empty plugins = no-op).
     if (this.fmvPlugins.length > 0) {
       await this.applyFmvToStore();
@@ -185,6 +233,7 @@ export class MultiSourceRadar {
       durationMs: Math.round(performance.now() - t0),
       query,
       errors,
+      delists,
     };
   }
 

@@ -2,7 +2,16 @@
  * Multi-source poll loop: stagger origins, respect minIntervalMs
  * (CC CDN ~30-60s), merge into ListingStore. Alternative to traded.gg SSE
  * when you poll native providers. PollScheduler is an alias of PollEngine.
+ *
+ * Full warm pulls with `pruned > 0` run {@link applyDelistsFromSync} (orderbook
+ * clear + optional RunCapture sold) before `onSync` — docs/SOLD_TAKEDOWN.md.
  */
+import type { RunCapture } from "../capture/RunCapture.js";
+import {
+  applyDelistsFromSync,
+  type DelistEvent,
+} from "../lifecycle/delist.js";
+import type { OrderbookStore } from "../orderbook/OrderbookStore.js";
 import type { ListingsProvider, PullQuery } from "../providers/types.js";
 import type { ListingStore } from "../store.js";
 import { getMetrics } from "../http/metrics.js";
@@ -69,6 +78,21 @@ export interface PollEngineOptions {
    * Default false.
    */
   logMetrics?: boolean;
+  /**
+   * Optional book for poll-diff delist: when `result.pruned > 0`,
+   * {@link applyDelistsFromSync} clears asks / residual bids (docs/SOLD_TAKEDOWN.md).
+   */
+  orderbook?: OrderbookStore;
+  /**
+   * Optional capture: delists with pruned>0 write `sold.jsonl` via
+   * {@link applyDelistsFromSync} (`reason: delisted_or_sold` | `ask_removed`).
+   */
+  capture?: RunCapture;
+  /**
+   * Fired after {@link applyDelistsFromSync} when the sync pruned ids
+   * (empty array not emitted). Hosts log DelistEvents here.
+   */
+  onDelist?: (events: DelistEvent[], result: SyncResult) => void;
 }
 
 function resolveInterval(
@@ -98,6 +122,12 @@ export class PollEngine {
   private readonly onSync?: (providerId: string, result: SyncResult) => void;
   private readonly onError?: (providerId: string, err: Error) => void;
   private readonly logMetrics: boolean;
+  private readonly orderbook?: OrderbookStore;
+  private readonly capture?: RunCapture;
+  private readonly onDelist?: (
+    events: DelistEvent[],
+    result: SyncResult,
+  ) => void;
   private readonly lastPull = new Map<string, number>();
   private readonly pollStats = new Map<string, ProviderPollStats>();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -116,6 +146,9 @@ export class PollEngine {
     this.onSync = opts.onSync;
     this.onError = opts.onError;
     this.logMetrics = opts.logMetrics ?? false;
+    this.orderbook = opts.orderbook;
+    this.capture = opts.capture;
+    this.onDelist = opts.onDelist;
   }
 
   /** Decision filter plus transport extras for a pull. */
@@ -234,6 +267,19 @@ export class PollEngine {
 
   private emitSync(providerId: string, result: SyncResult): void {
     this.notePollStats(providerId, result);
+    // Full warm reconcile: prune → delist lifecycle before host onSync
+    // (refreshAsks / capture). Soft-fail / incomplete pages have pruned=0.
+    const prunedN = result.pruned ?? result.prunedIds?.length ?? 0;
+    if (prunedN > 0) {
+      const delists = applyDelistsFromSync(
+        result,
+        this.orderbook,
+        this.capture,
+      );
+      if (delists.length > 0) {
+        this.onDelist?.(delists, result);
+      }
+    }
     this.onSync?.(providerId, result);
     if (this.logMetrics) {
       const m = getMetrics()[providerId];
@@ -246,7 +292,8 @@ export class PollEngine {
             : "") +
           (ps
             ? ` shortCircuit=${ps.shortCircuits}/${ps.syncs}`
-            : ""),
+            : "") +
+          (prunedN > 0 ? ` pruned=${prunedN}` : ""),
       );
     }
   }

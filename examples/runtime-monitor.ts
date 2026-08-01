@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import {
   MultiSourceRadar,
   PollEngine,
+  ListingStore,
   DEFAULT_PROVIDER_MIN_INTERVAL_MS,
   DEFAULT_MIN_INTERVAL_MS,
   minConfiguredIntervalMs,
@@ -44,6 +45,7 @@ import {
   type PullQuery,
   type SyncResult,
   type InstrumentSoldEvent,
+  type DelistEvent,
 } from "../src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -267,13 +269,13 @@ async function main(): Promise<void> {
     booksRoot: join(root, "data", "books"),
   });
 
-  const radar = new MultiSourceRadar({ providers, filter });
   let skippedCold = false;
   let loadReason: string | undefined;
+  const listingStore = new ListingStore();
 
   if (bootstrap && resume && !forceCold && !offline) {
     const loaded = loadBook({
-      store: radar.store,
+      store: listingStore,
       outDir: bookDir,
       filter,
       maxAgeMs,
@@ -308,6 +310,24 @@ async function main(): Promise<void> {
   let bookLogCount = 0;
   let soldLogCount = 0;
 
+  // Radar with capture: syncAll/bootstrapAll applyDelistsFromSync on pruned>0
+  const radar = new MultiSourceRadar({
+    store: listingStore,
+    providers,
+    filter,
+    capture,
+    onDelist: (events, result) => {
+      for (const d of events) {
+        soldLogCount += 1;
+        console.error(
+          `[monitor] delist ${d.listingId} reason=${d.reason} source=${d.source}` +
+            ` provider=${result.provider} lastAsk=${d.lastBestAsk} lastBid=${d.lastBestBid}` +
+            (d.instrumentKey ? ` key=${d.instrumentKey}` : ""),
+        );
+      }
+    },
+  });
+
   // --- Cold: full bootstrap or single-page syncAll ---
   const first = skippedCold
     ? {
@@ -333,6 +353,7 @@ async function main(): Promise<void> {
         durationMs: 0,
         query: filter,
         errors: {} as Record<string, string>,
+        delists: [] as DelistEvent[],
       }
     : bootstrap
       ? await radar.bootstrapAll({ maxPages })
@@ -341,6 +362,7 @@ async function main(): Promise<void> {
   for (const r of first.results) {
     eventLogCount += wireSync(capture, radar.store, r.provider, r, providers);
   }
+  // Delist lines already logged via radar.onDelist when pruned>0 + capture.onSold
 
   if (bootstrap && !skippedCold && radar.store.size() > 0) {
     saveBook({
@@ -439,9 +461,24 @@ async function main(): Promise<void> {
     minIntervalMs,
     tickMs,
     parallel: true,
+    // Poll-diff delist: applyDelistsFromSync when pruned>0 → onSold + book clear
+    orderbook: orderbook.getOrderbookStore(),
+    capture,
+    onDelist: (events: DelistEvent[], result: SyncResult) => {
+      for (const d of events) {
+        soldLogCount += 1;
+        console.error(
+          `[monitor] delist ${d.listingId} reason=${d.reason} source=${d.source}` +
+            ` provider=${result.provider} lastAsk=${d.lastBestAsk} lastBid=${d.lastBestBid}` +
+            (d.instrumentKey ? ` key=${d.instrumentKey}` : ""),
+        );
+      }
+    },
     onSync: (id: string, result: SyncResult) => {
       ticks += 1;
       eventLogCount += wireSync(capture, radar.store, id, result, providers);
+      // Delists already applied (orderbook+capture) when pruned>0.
+      // refreshAsks reconciles remaining asks; residual sold → onSold.
       const soldEv: InstrumentSoldEvent[] = orderbook.refreshAsks();
       for (const s of soldEv) {
         capture.onSold({
@@ -450,12 +487,13 @@ async function main(): Promise<void> {
           lastBestAsk: s.lastBestAsk,
           currency: s.currency,
           listingIds: s.listingIds,
-          reason: s.reason,
+          reason: s.reason, // SoldReason: delisted_or_sold | ask_removed
           ts: s.at,
         });
         soldLogCount += 1;
         console.error(
-          `[monitor] sold ${s.instrumentKey} lastAsk=${s.lastBestAsk} lastBid=${s.lastBestBid}`,
+          `[monitor] sold ${s.instrumentKey} reason=${s.reason}` +
+            ` lastAsk=${s.lastBestAsk} lastBid=${s.lastBestBid}`,
         );
       }
       bookLogCount += captureAllBooks(capture, orderbook);

@@ -13,6 +13,15 @@ export type DelistReason =
   | "delisted_or_sold"
   | "ask_removed";
 
+/**
+ * Orderbook / capture sold payload reasons — subset of {@link DelistReason}.
+ * Poll leave-book after instrument ask count hits zero → `delisted_or_sold`.
+ */
+export type SoldReason = Extract<
+  DelistReason,
+  "delisted_or_sold" | "ask_removed"
+>;
+
 /** How the leave-book signal was observed. */
 export type DelistSource = "poll_diff" | "sse_closed";
 
