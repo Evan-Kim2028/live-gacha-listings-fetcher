@@ -1,5 +1,5 @@
 {
-  "name": "traded-listings",
+  "name": "live-gacha-listings-fetcher",
   "version": "0.1.0",
   "description": "Self-serve multi-source TCG listings radar: native marketplace pulls, scoped store, bootstrap + warm poll, orderbook (no traded.gg required).",
   "type": "module",
@@ -47,12 +47,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Evan-Kim2028/traded-listings.git"
+    "url": "https://github.com/Evan-Kim2028/live-gacha-listings-fetcher.git"
   },
   "bugs": {
-    "url": "https://github.com/Evan-Kim2028/traded-listings/issues"
+    "url": "https://github.com/Evan-Kim2028/live-gacha-listings-fetcher/issues"
   },
-  "homepage": "https://github.com/Evan-Kim2028/traded-listings#readme",
+  "homepage": "https://github.com/Evan-Kim2028/live-gacha-listings-fetcher#readme",
   "keywords": [
     "tcg",
     "pokemon",
