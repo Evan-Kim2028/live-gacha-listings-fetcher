@@ -378,3 +378,87 @@ describe("idempotent upsert + double-sync", () => {
     expect(raw.rows.every((r) => r.instance_id && r.price > 0)).toBe(true);
   });
 });
+
+describe("mass-prune guard (partial warm walk)", () => {
+  it("syncOnce does not wipe large scope when page is <50% and hasMore false", async () => {
+    
+    const store = new ListingStore();
+    const rows = Array.from({ length: 300 }, (_, i) => {
+      const nativeId = `n${i}`;
+      return {
+        id: listingId({ provider: "fixture", platform: "cc", nativeId }),
+        provider: "fixture",
+        platform: "cc",
+        nativeId,
+        tokenId: null,
+        name: `Card ${i}`,
+        price: 10 + i,
+        currency: "USDC",
+        fmv: null,
+        delta: null,
+        market: null,
+        seller: null,
+        externalUrl: null,
+        imageUrl: null,
+        listedAt: null,
+        firstListedAt: null,
+        lastEvent: null,
+        tcg: "pokemon",
+        itemType: null,
+        grader: null,
+        grade: null,
+        gradeNum: null,
+        language: null,
+        setRaw: null,
+        cardNumber: null,
+        year: null,
+        confidence: null,
+        canonical: null,
+        contractAddress: null,
+      };
+    });
+    // seed large scope
+    const pFull: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: rows,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b1",
+            total: rows.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    await syncOnce(store, pFull, { tcg: "pokemon", sort: "new" });
+    expect(store.size("fixture")).toBe(300);
+
+    // partial page claiming complete (hasMore false) — must not mass-prune
+    const partial = rows.slice(0, 50);
+    const pPartial: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: partial,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b2",
+            total: 50,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    const r = await syncOnce(store, pPartial, { tcg: "pokemon", sort: "new" });
+    expect(r.pruned).toBe(0);
+    expect(store.size("fixture")).toBe(300);
+  });
+});

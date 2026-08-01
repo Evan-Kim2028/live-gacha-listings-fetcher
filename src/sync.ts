@@ -184,11 +184,20 @@ export async function syncOnce(
     const seenAt =
       page.meta.fetchedAt || new Date().toISOString();
 
-    // Incomplete page safety: never full-replace+prune when the origin still
-    // has more pages (warm poll without full walk / maxPages). Upsert only.
-    // A smaller page with hasMore === false is a complete snapshot and may prune
-    // (sold/delisted). Soft-fail empty is handled above (no prune).
-    const incompletePage = scopeNonEmpty && page.hasMore === true;
+    // Incomplete / partial-walk safety: never full-replace+prune when
+    // (a) origin still has more pages, or
+    // (b) this page is a small fraction of the prior scope (truncated warm walk /
+    //     mid-rate-limit hasMore=false) — that would look like a mass sale.
+    // Soft-fail empty is handled above (no prune).
+    const priorScopeSize = scopeIds.size;
+    const pageSize = page.listings.length;
+    const suspiciouslySmall =
+      scopeNonEmpty &&
+      priorScopeSize >= 200 &&
+      pageSize > 0 &&
+      pageSize < Math.floor(priorScopeSize * 0.5);
+    const incompletePage =
+      scopeNonEmpty && (page.hasMore === true || suspiciouslySmall);
     if (incompletePage) {
       let upserted = 0;
       let unchanged = 0;
