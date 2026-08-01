@@ -6,7 +6,7 @@ Spine: `MultiSourceRadar` → `ListingStore` → `listingId({ provider, platform
 
 Parallel origin hops (CC CDN cache ~30s + ME public) typically finish a cold full book faster than a single aggregator hop. Measured Solana pokemon full cold (~21k rows): **~28s concurrent** vs **~74s sequential** (`docs/BOOTSTRAP_FULL_BOOK.md`).
 
-License: **MIT**. Node `>=18`.
+License: **0BSD**. Node `>=18`.
 
 ## Get started: full bootstrap + warm monitor
 
@@ -229,4 +229,4 @@ Either `LIVE=1` or `RUN_LIVE=1` enables live `it.skipIf` / `describe.skipIf` sui
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+0BSD. See [LICENSE](LICENSE).
