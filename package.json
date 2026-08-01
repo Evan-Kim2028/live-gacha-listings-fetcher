@@ -44,7 +44,7 @@
     "LICENSE",
     "docs"
   ],
-  "license": "MIT",
+  "license": "0BSD",
   "repository": {
     "type": "git",
     "url": "https://github.com/Evan-Kim2028/live-gacha-listings-fetcher.git"
