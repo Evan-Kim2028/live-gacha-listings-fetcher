@@ -116,28 +116,43 @@ export class OrderbookFeed {
     }
     if (this.bidsProviders.length > 0) {
       for (const bidsProvider of this.bidsProviders) {
-        const stoppable = await bidsProvider.openStream?.({
-          signal: this.abort.signal,
-          onStatus: (status) =>
-            this.emit({
-              kind: "status",
-              status: `bids:${status}`,
-              at: new Date().toISOString(),
-            }),
-          onError: (err) =>
-            this.emit({
-              kind: "error",
-              error: err.message,
-              at: new Date().toISOString(),
-            }),
-          onEvent: (wire) => this.onBidWire(wire),
-        });
-        if (stoppable) this.bidStops.push(stoppable.stop);
-        else {
-          const orders = await bidsProvider.pull({
-            ...this.listingFilter,
+        try {
+          const stoppable = await bidsProvider.openStream?.({
+            signal: this.abort.signal,
+            onStatus: (status) =>
+              this.emit({
+                kind: "status",
+                status: `bids:${status}`,
+                at: new Date().toISOString(),
+              }),
+            onError: (err) =>
+              this.emit({
+                kind: "error",
+                error: err.message,
+                at: new Date().toISOString(),
+              }),
+            onEvent: (wire) => this.onBidWire(wire),
           });
-          this.applyBidSnapshot(orders);
+          if (stoppable) this.bidStops.push(stoppable.stop);
+          else {
+            const orders = await bidsProvider.pull({
+              ...this.listingFilter,
+            });
+            this.applyBidSnapshot(orders);
+          }
+        } catch (e) {
+          // Bids are optional: 403/5xx/rate-limit must not kill the listings monitor.
+          const msg = e instanceof Error ? e.message : String(e);
+          this.emit({
+            kind: "error",
+            error: `bids:${bidsProvider.id}: ${msg}`,
+            at: new Date().toISOString(),
+          });
+          this.emit({
+            kind: "status",
+            status: `bids:${bidsProvider.id}:soft_fail`,
+            at: new Date().toISOString(),
+          });
         }
       }
     } else {
@@ -205,8 +220,17 @@ export class OrderbookFeed {
   async refreshBids(extra: PullQuery = {}): Promise<void> {
     if (this.native) this.seedBidsTargetsFromStore();
     for (const p of this.bidsProviders) {
-      const orders = await p.pull({ ...this.listingFilter, ...extra });
-      this.applyBidSnapshot(orders);
+      try {
+        const orders = await p.pull({ ...this.listingFilter, ...extra });
+        this.applyBidSnapshot(orders);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.emit({
+          kind: "error",
+          error: `bids:${p.id}: ${msg}`,
+          at: new Date().toISOString(),
+        });
+      }
     }
   }
 

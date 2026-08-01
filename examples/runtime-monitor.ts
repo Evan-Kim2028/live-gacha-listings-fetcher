@@ -321,6 +321,7 @@ async function main(): Promise<void> {
           upserted: 0,
           unchanged: radar.store.size(id),
           pruned: 0,
+          prunedIds: [] as string[],
           activeCount: radar.store.size(id),
           durationMs: 0,
           listings: radar.store.list(id),
@@ -370,6 +371,7 @@ async function main(): Promise<void> {
         upserted: 0,
         unchanged: 0,
         pruned: 0,
+        prunedIds: [],
         activeCount: radar.store.size(id),
         durationMs: 0,
         listings: [],
@@ -405,9 +407,21 @@ async function main(): Promise<void> {
     native: true,
     offline,
     bidsProvider,
+    onEvent: (ev) => {
+      if (ev.kind === "error") {
+        console.error(`[monitor] orderbook ${ev.error}`);
+      }
+    },
   });
-  await orderbook.start();
-  bookLogCount += captureAllBooks(capture, orderbook);
+  // Listings poll must continue even if bids providers throw (403/rate-limit).
+  try {
+    await orderbook.start();
+    bookLogCount += captureAllBooks(capture, orderbook);
+  } catch (e) {
+    console.error(
+      `[monitor] orderbook.start soft-fail: ${e instanceof Error ? e.message : e}`,
+    );
+  }
 
   let ticks = 0;
   let bidRefreshTicks = 0;
@@ -476,6 +490,7 @@ async function main(): Promise<void> {
           upserted: 0,
           unchanged: 0,
           pruned: 0,
+          prunedIds: [],
           activeCount: radar.store.size(id),
           durationMs: 0,
           listings: [],
