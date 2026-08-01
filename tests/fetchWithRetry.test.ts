@@ -403,4 +403,10 @@ describe("provider metrics", () => {
     // Missing map key → default 30s
     expect(engine.intervalFor("phygitals")).toBe(30_000);
   });
+
+  it("treats 403 as retryable (CDN/WAF rate window)", () => {
+    expect(isRetryableStatus(403)).toBe(true);
+    expect(isRetryableStatus(429)).toBe(true);
+    expect(isRetryableStatus(404)).toBe(false);
+  });
 });
