@@ -115,7 +115,7 @@ Provider: `src/providers/collectorcrypt.ts`.
 | Param | Notes |
 |-------|--------|
 | `search` | Substring / exact on nftAddress |
-| `marketplaceStatus` | CSV; `Buy now` = listed |
+| `marketplaceStatus` | CSV; **`Buy now` = listed** (always set by provider). **Delist signal** = card id missing from a complete full-scope `pullAll` under this filter — not a sold endpoint. |
 | `marketplaceSource` | `CC` \| `ME` |
 | `listPriceMin` / `listPriceMax` | USDC |
 | `categories` | `Pokemon`, `Baseball`, … |
@@ -234,7 +234,7 @@ curl "https://api-mainnet.magiceden.dev/v2/tokens/{mint}/listings"
 | **Beezie** | `POST https://api.beezie.com/dropItems/byCategory` body `{filters:[], saleStatus:"forSale", sort, page:"1", categoryId:"1"}`; `GET …/categories`; `GET …/getByTokenId/:id` | **EVM** owners (`0x…`); SellOrder.amountUSDC; page ~**20**; `pullAll` multi-page bootstrap (cap **50** pages); mid-page fail keeps partial; Cloudflare needs UA |
 | **Renaiss** | `GET https://www.renaiss.xyz/api/trpc/collectible.list?input=…` | askPriceInUSDT in **wei (1e18)**; offer.* auth; single-page only |
 | **DYLI** | `GET https://www.dyli.io/api/explore`, `/explore/top`, `/search/products?searchTerm=` | products[].price / lowest_price; single-page only |
-| **Phygitals** | `GET …/marketplace-listings`, `GET …/filters` | **Public API** (no key): `page` (0-based), `itemsPerPage` (≤**200**), `listedStatus=listed`, `sortBy`, `metadataConditions` (JSON), `priceRange`/`fmvRange`, `searchTerm`. Docs: https://phygitals.mintlify.app/public-api/marketplace/listings. **`pullAll` multi-page** for bootstrap (`LONGTAIL_MAX_PAGES_CAP` **50**). Bare `limit`/`offset` alone often **500**. Response `listings[]` + `amount`; `price` micro-USDC (÷1e6). Soft-empty + `lastError` (never throws); mid multi-page soft-fail keeps collected rows; `syncOnce` does not prune prior full scope on soft empty. Fixture: `fixtures/phygitals-sample.json`. |
+| **Phygitals** | `GET …/marketplace-listings`, `GET …/filters` | **Public API** (no key): `page` (0-based), `itemsPerPage` (≤**200**), `listedStatus=listed`, `sortBy`, `metadataConditions` (JSON), `priceRange`/`fmvRange`, `searchTerm`. Docs: https://phygitals.mintlify.app/public-api/marketplace/listings. **`pullAll` multi-page** for bootstrap (`LONGTAIL_MAX_PAGES_CAP` **50**). Bare `limit`/`offset` alone often **500**. Response `listings[]` + `amount`; `price` micro-USDC (÷1e6). Soft-empty 5xx + `lastError` (never throws) → **no prune**. Successful complete `listedStatus=listed` page (`hasMore === false`) **may prune** absences (delist path). Mid multi-page soft-fail keeps collected rows. Fixture: `fixtures/phygitals-sample.json`. See `docs/SOLD_TAKEDOWN.md`. |
 
 ## Rate limits / etiquette
 

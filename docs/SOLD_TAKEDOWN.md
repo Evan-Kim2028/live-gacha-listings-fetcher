@@ -32,14 +32,17 @@ Not modified (HTTP 304), generation hits (etag / contentFingerprint), and conten
 | Condition | Store effect | Prune? |
 |-----------|--------------|--------|
 | Soft-fail empty: `provider.lastError` set **and** `page.listings.length === 0` | `markProviderError`; keep prior scope; **do not** touch `lastSeenAt` | **No** (`soft_fail_no_prune`) |
-| Incomplete page: prior scope non-empty **and** (`hasMore === true` **or** page id-set smaller than prior scope with rows present) | Upsert only; keep prior meta stamps where needed | **No** (`incomplete_page_no_prune`) |
+| Incomplete page: prior scope non-empty **and** `hasMore === true` | Upsert only; keep prior meta stamps where needed | **No** (`incomplete_page_no_prune`) |
 | Thrown pull | Error watermark; prior scope intact | **No** |
 | HTTP 304 / generation / content short-circuit | Confirm presence; refresh age | **No** |
-| Complete full-scope apply | `replaceScopeSnapshot` | **Yes** — ids missing from page |
+| Complete full-scope apply (`hasMore === false`) | `replaceScopeSnapshot` | **Yes** — ids missing from page (even if the page is smaller than prior scope) |
 
-Rationale: origin 5xx, partial pagination, or warm “first page only” must never look like a mass sale. Host UIs grey-out via `isStale(listing, maxAgeMs)` when soft-fail freezes `lastSeenAt`.
+Rationale: origin 5xx, partial pagination (`hasMore`), or warm “first page only” must never look like a mass sale. A **smaller complete** page (`hasMore === false`) is a full reconcile and **may prune** absences (sold/delisted). Host UIs grey-out via `isStale(listing, maxAgeMs)` when soft-fail freezes `lastSeenAt`.
 
-Phygitals is the textbook soft-empty origin (5xx → empty page + `lastError`; never throws; never prunes prior scope).
+**Phygitals** is on the same poll-diff delist path as CC/ME:
+
+- **5xx soft-empty** → empty page + `lastError`; never throws; **never prunes** prior scope (`soft_fail_no_prune`).
+- **Successful full `listedStatus=listed` page** with `hasMore === false` → may prune ids absent from the page (`missing_from_full_snapshot`); hosts can run `applyDelistsFromSync(result, orderbook, capture)` (or `OrderbookFeed.refreshAsks()`).
 
 ---
 
@@ -99,13 +102,26 @@ True fill price needs marketplace trade history or chain/indexer events (future)
 
 | Provider | Id leave signal | Notes |
 |----------|-----------------|--------|
-| **Collector Crypt** | Drop from browse with `marketplaceStatus=Buy now` | Full multi-page walk required for correct prune; CDN `s-maxage≈30`. No native sold SSE. |
-| **Magic Eden** (`collector_crypt`) | Drop from collection `listings` array (`/v2/collections/{symbol}/listings`) | Offset/limit pagination; incomplete warm page must not prune. No native sold SSE. |
-| **Phygitals** | Drop while `listedStatus=listed` (docs browse params) | Soft-empty + `lastError` on outage — **never** prunes. Multi-page `pullAll` for bootstrap. No native sold SSE. |
+| **Collector Crypt** | **Absence** from `GET /marketplace?marketplaceStatus=Buy now` after a **complete** multi-page `pullAll` (bootstrap/warm until `!hasMore`) | Provider always sets `marketplaceStatus=Buy now`. No bulk sold SSE/endpoint — do not invent one. Card `status` (e.g. `Transferred`) is catalog ownership, not listing sold; remaining rows keep `lastEvent: LIST`. CDN `s-maxage≈30`. Fixture: `tests/collectorcrypt.test.ts` (delist / prunedIds). |
+| **Magic Eden** (`collector_crypt`) | Drop from collection `listings` array (`/v2/collections/{symbol}/listings`) | **Poll-diff only** (see §6.1). Multi-page `pullAll` required for correct prune. No bulk sold SSE in this lib. |
+| **Phygitals** | Drop while `listedStatus=listed` (docs browse params) | Participates in poll-diff delist. Soft-empty 5xx + `lastError` — **never** prunes. Successful complete listed page (`hasMore === false`) **may prune** absences. Multi-page `pullAll` for bootstrap. No native sold SSE. |
 
 **All three:** no marketplace-native SSE for list/delist on the Solana radar path today. Freshness = `PollEngine` parallel poll (typical `minIntervalMs` 15–30s; CC floor driven by CDN ~30s).
 
 **Not default Solana:** Beezie (EVM opt-in), Courtyard (Polygon), traded.gg (reference / legacy SSE only).
+
+### 6.1 Magic Eden `collector_crypt` — poll-diff only (no bulk sold SSE)
+
+This library does **not** wire a Magic Eden bulk sold / activity SSE or websocket. ME leave-book is **poll-diff only**:
+
+1. **Full multi-page pull** — `syncOnce` prefers `MagicEdenProvider.pullAll` → `pullPages` over `GET /v2/collections/collector_crypt/listings` with `offset`/`limit` (page ≤ 100) until short page / `!hasMore` or `maxPages` (`bootstrap: true` raises the cap).
+2. **Missing mint/listing → prune** — after a **complete** full-scope snapshot, `ListingStore.replaceScopeSnapshot` deletes ids that were in the prior scope but absent from the new page set (`SyncResult.prunedIds`). Reason `missing_from_full_snapshot`, source `poll_diff` via `applyDelistsFromSync`.
+3. **No prune when incomplete or soft-fail** — warm single page with `hasMore: true`, mid-pagination soft-fail (partial rows + incomplete), or soft-fail empty + `lastError` never mass-deletes prior inventory.
+4. **Operator rule** — warm full-book monitors must re-walk the **same** multi-page scope as cold seed (same `limit` / `maxPages` / `bootstrap`). A first-page-only warm poll against a multi-page book is incomplete and will **not** delist missing mints.
+
+Identity: listing id is `magiceden:me:{pdaAddress|mint}`; prune key is that id (token mint on `tokenId` for deep links / bids).
+
+There is **no** ME bulk sold feed in this lib today; optional Helius / ME activity streams (§7) may reduce detect latency but must not replace full-scope reconcile as truth for “still listed.”
 
 ---
 
@@ -116,7 +132,7 @@ Optional upgrades (not required for correct poll-diff sold/takedown):
 - **Helius** (or similar) websocket / webhook for Solana program/list events involving CC / ME mints.
 - **Magic Eden** websocket or activity feed for collection list/delist, if product-grade and auth-stable.
 
-These would reduce detect latency vs poll interval; they must still respect soft-fail / incomplete rules and must not replace full-scope reconcile as the source of truth for “still listed.”
+These would reduce detect latency vs poll interval; they must still respect soft-fail / incomplete rules and must not replace full-scope reconcile as the source of truth for “still listed.” ME remains poll-diff-only in this library until such a feed is explicitly wired.
 
 ---
 

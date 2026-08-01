@@ -10,6 +10,8 @@ import {
   clearSolPriceCache,
 } from "../src/providers/magiceden.js";
 import { meListingUrl } from "../src/externalUrl.js";
+import { applyDelistsFromSync } from "../src/lifecycle/index.js";
+import { listingToAsk, OrderbookStore } from "../src/orderbook/index.js";
 import { OrderbookFeed } from "../src/orderbook/OrderbookFeed.js";
 import { ListingStore } from "../src/store.js";
 import { syncOnce } from "../src/sync.js";
@@ -457,6 +459,8 @@ describe("MagicEdenProvider pullAll / pagination", () => {
     expect(p.lastError).toMatch(/HTTP 500/);
     expect(p.lastPullMeta?.stoppedReason).toBe("soft_error");
     expect(p.lastPagesFetched).toBe(1);
+    // Incomplete: must not look like a complete snapshot (would mass-prune)
+    expect(page.hasMore).toBe(true);
   });
 
   it("syncOnce uses pullAll multi-page for magiceden", async () => {
@@ -478,6 +482,128 @@ describe("MagicEdenProvider pullAll / pagination", () => {
     expect(store.size("magiceden")).toBe(5);
     expect(p.lastPagesFetched).toBe(1);
     expect(typeof p.pullAll).toBe("function");
+  });
+
+  it("multi-page pullAll then shrink prunes missing mint (poll-diff delist)", async () => {
+    // ME page size ≤100 → 250 rows needs 3 pages; then drop one mint on re-pull.
+    let universe = Array.from({ length: 250 }, (_, i) =>
+      meRow(`M${i}`, 1 + (i % 10)),
+    );
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (!url.includes("/listings")) {
+        return new Response("{}", { status: 404 });
+      }
+      const u = new URL(url);
+      const offset = Number(u.searchParams.get("offset") ?? "0");
+      const limit = Number(u.searchParams.get("limit") ?? "20");
+      const body = universe.slice(offset, offset + limit);
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const p = createMagicEdenProvider({
+      fetchImpl,
+      offlineSolPrice: true,
+      solPriceUsd: 100,
+      maxRetries: 0,
+    });
+    const store = new ListingStore();
+    // pullAll: pageLimit 100, maxPages ceil(250/100)=3 → full multi-page walk
+    const cold = await syncOnce(store, p, {
+      limit: 250,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(cold.fetched).toBe(250);
+    expect(cold.pruned).toBe(0);
+    expect(cold.prunedIds).toEqual([]);
+    expect(store.size("magiceden")).toBe(250);
+    expect(p.lastPagesFetched).toBe(3);
+    expect(p.lastPullMeta?.symbol).toBe("collector_crypt");
+
+    const goneId = listingId({
+      provider: "magiceden",
+      platform: "me",
+      nativeId: "pda_M42",
+    });
+    expect(store.get(goneId)).toBeDefined();
+
+    const book = new OrderbookStore();
+    for (const l of store.list("magiceden")) {
+      book.upsertAsk(listingToAsk(l));
+    }
+    expect(book.allAsks()).toHaveLength(250);
+
+    // Shrink: mint M42 leaves collection listings (sold/delisted on ME)
+    universe = universe.filter((r) => r.tokenMint !== "M42");
+    const warm = await syncOnce(store, p, {
+      limit: 250,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(warm.pruned).toBe(1);
+    expect(warm.prunedIds).toEqual([goneId]);
+    expect(store.get(goneId)).toBeUndefined();
+    expect(store.size("magiceden")).toBe(249);
+    expect(warm.prunedIds.every((id) => id.startsWith("magiceden:me:"))).toBe(
+      true,
+    );
+
+    const events = applyDelistsFromSync(warm, book);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      provider: "magiceden",
+      listingId: goneId,
+      reason: "missing_from_full_snapshot",
+      source: "poll_diff",
+    });
+    expect(book.getAsk(`ask:${goneId}`)).toBeUndefined();
+    expect(book.allAsks()).toHaveLength(249);
+  });
+
+  it("mid-pagination soft-fail after full book does not prune", async () => {
+    let mode: "ok" | "partial_fail" = "ok";
+    // 150 rows → 2 pages at limit 100; fail page 2 on warm re-pull
+    const rows = Array.from({ length: 150 }, (_, i) => meRow(`K${i}`));
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (!url.includes("/listings")) {
+        return new Response("{}", { status: 404 });
+      }
+      const u = new URL(url);
+      const offset = Number(u.searchParams.get("offset") ?? "0");
+      const limit = Number(u.searchParams.get("limit") ?? "20");
+      if (mode === "partial_fail" && offset > 0) {
+        return new Response("err", { status: 500 });
+      }
+      const body = rows.slice(offset, offset + limit);
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const p = createMagicEdenProvider({
+      fetchImpl,
+      offlineSolPrice: true,
+      solPriceUsd: 100,
+      maxRetries: 0,
+    });
+    const store = new ListingStore();
+    await syncOnce(store, p, {
+      limit: 150,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(store.size("magiceden")).toBe(150);
+
+    mode = "partial_fail";
+    const warm = await syncOnce(store, p, {
+      limit: 150,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(warm.pruned).toBe(0);
+    expect(warm.prunedIds).toEqual([]);
+    expect(store.size("magiceden")).toBe(150);
+    expect(p.lastError).toMatch(/HTTP 500/);
   });
 
   it("bootstrap walks until empty with high page cap", async () => {

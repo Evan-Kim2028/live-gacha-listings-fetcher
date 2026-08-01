@@ -768,9 +768,13 @@ export class MagicEdenProvider implements ListingsProvider {
     };
 
     const fp = contentFingerprint(walk.listings);
+    // Mid-pagination soft-fail is incomplete: hasMore must stay true so
+    // syncOnce never mass-prunes the prior full scope (poll-diff delist only
+    // after a complete multi-page walk). Empty soft-fail returns above.
+    const incompleteSoft = softError && walk.listings.length > 0;
     return {
       listings: walk.listings,
-      hasMore: walk.hasMore && !softError,
+      hasMore: incompleteSoft ? true : walk.hasMore,
       meta: {
         provider: this.id,
         builtAt: fp,

@@ -69,6 +69,7 @@ function syncResult(
     upserted: listings.length,
     unchanged: 0,
     pruned: 0,
+    prunedIds: [],
     activeCount: listings.length,
     durationMs: 12,
     listings,

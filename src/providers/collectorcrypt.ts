@@ -6,6 +6,14 @@
  * Listings: GET /marketplace (public, CDN cached ~30s)
  * Pagination: page (1-indexed) + step (max 100)
  *
+ * Delist / leave-book (Solana radar):
+ * - Every browse request sets `marketplaceStatus=Buy now` (currently listed only).
+ * - There is no sold SSE or bulk sold endpoint on this path — do not invent one.
+ * - Leave-book signal = id absent from a **complete** full-scope pullAll
+ *   (bootstrap / warm multi-page until !hasMore) → store prune + prunedIds.
+ * - Incomplete / soft-fail pages never prune (see docs/SOLD_TAKEDOWN.md).
+ * - Card-level `status` (e.g. "Transferred") is catalog ownership, not listing sold.
+ *
  * Offers (buy bids):
  * - Browse embeds `offers` often as `{ id }` only (docs + live).
  * - Priced detail: POST / JSON-RPC `{ method: "getCardOffers", params: { nftAddress, useV2: true } }`
@@ -107,6 +115,11 @@ export interface CcCard {
   gradingID?: string;
   language?: string;
   listedAt?: string;
+  /**
+   * Catalog ownership state from browse docs (e.g. `"Transferred"`).
+   * Not a listing sold flag — leave-book is absence under `marketplaceStatus=Buy now`.
+   */
+  status?: string;
   listing?: CcListingBlock | null;
   offers?: CcOfferRef[] | null;
   owner?: { wallet?: string; name?: string; id?: string };
@@ -320,6 +333,7 @@ export function buildMarketplaceUrl(
   const { page, step } = pageFromQuery(query, defaultStep);
   u.searchParams.set("page", String(page));
   u.searchParams.set("step", String(step));
+  // Delist signal: only currently-listed rows. Absence after complete pullAll = prune.
   u.searchParams.set("marketplaceStatus", "Buy now");
 
   // Category / tcg
@@ -362,6 +376,20 @@ export function buildMarketplaceUrl(
     sortMap[query.sort ?? "new"] ?? "listedDateDesc",
   );
   return u.toString();
+}
+
+/**
+ * lastEvent for a still-listed browse row.
+ * - Active ask under marketplaceStatus=Buy now → LIST.
+ * - Card `status` (e.g. Transferred) is catalog ownership, not sold/delist — not mapped.
+ * - listing.updatedAt is often bumped without a price change; do not treat as PRICE_UPDATE.
+ * - No bulk sold field on remaining Buy-now rows; leave-book is poll-diff absence only.
+ * - Offer `status` is bid-side only (see normalizeCcOffer).
+ */
+export function lastEventFromCcCard(card: CcCard): Listing["lastEvent"] {
+  const listing = card.listing;
+  if (!listing || listing.price == null) return null;
+  return "LIST";
 }
 
 /** Normalize a CC marketplace card with an active listing into shared Listing. */
@@ -408,7 +436,7 @@ export function normalizeCcCard(
       card.images?.frontS ?? card.images?.frontM ?? card.images?.front ?? null,
     listedAt: listing.createdAt ?? card.listedAt ?? null,
     firstListedAt: listing.createdAt ?? null,
-    lastEvent: "LIST",
+    lastEvent: lastEventFromCcCard(card),
     tcg: mapCategoryToTcg(card.category),
     itemType: mapItemType(card.type ?? undefined),
     grader: card.gradingCompany ?? null,
@@ -423,6 +451,7 @@ export function normalizeCcCard(
     contractAddress: null,
     searchBlob: card.itemName ?? null,
     // offerCount: browse is usually id-only; count always available without detail RPC.
+    // card.status kept on raw when present (catalog ownership, not leave-book).
     raw: { ...card, offerCount },
   };
 }

@@ -94,7 +94,7 @@ const DEFAULTS: Record<
     baseUrl: "https://api.phygitals.com",
     listingPath: "/api/marketplace/marketplace-listings",
     note:
-      "GET marketplace-listings?page&itemsPerPage(≤200)&listedStatus=listed; pullAll multi-page for bootstrap (maxPages cap 50); wrong limit/offset → 500; soft empty + lastError on outage (never prunes prior scope)",
+      "GET marketplace-listings?page&itemsPerPage(≤200)&listedStatus=listed; pullAll multi-page for bootstrap (maxPages cap 50); wrong limit/offset → 500; soft empty + lastError on 5xx (never prunes); successful complete listed page may prune absences (delist)",
   },
 };
 
@@ -1342,10 +1342,13 @@ export class LongtailProvider implements ListingsProvider {
 
   /**
    * Phygitals marketplace-listings (Public API, no key required).
-   * Uses documented query params (page / itemsPerPage / listedStatus).
+   * Uses documented query params (page / itemsPerPage / listedStatus=listed).
    * Wrong shapes (bare limit/offset) often 500 on origin.
    * Retries with exponential backoff via fetchWithRetry; on total failure
-   * soft-returns empty + lastError so MultiSourceRadar continues.
+   * soft-returns empty + lastError so MultiSourceRadar continues and
+   * syncOnce does **not** prune prior scope (soft_fail_no_prune).
+   * A successful complete listed page (hasMore false) participates in
+   * poll-diff delist: absences may prune via replaceScopeSnapshot.
    */
   private async pullPhygitals(query: PullQuery): Promise<PullPage> {
     const base = this.baseUrl.endsWith("/") ? this.baseUrl : this.baseUrl + "/";

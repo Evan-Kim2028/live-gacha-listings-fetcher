@@ -43,6 +43,14 @@ export {
 } from "./sync.js";
 export { querySignature, scopeKey } from "./querySignature.js";
 
+/** Poll-diff / SSE delist lifecycle (prunedIds → orderbook clear + capture). */
+export {
+  applyDelistsFromSync,
+  type DelistReason,
+  type DelistSource,
+  type DelistEvent,
+} from "./lifecycle/index.js";
+
 export type {
   ListingsProvider,
   PullPage,

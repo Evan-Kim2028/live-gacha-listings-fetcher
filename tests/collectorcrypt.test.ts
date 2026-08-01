@@ -7,12 +7,14 @@ import {
   buildMarketplaceUrl,
   pageFromQuery,
   resolveBlockchainParam,
+  lastEventFromCcCard,
   createCollectorCryptProvider,
   createCollectorCryptBidsProvider,
   fetchCcCardOffers,
   type CcCard,
   type CcOfferRef,
 } from "../src/providers/collectorcrypt.js";
+import { applyDelistsFromSync } from "../src/lifecycle/index.js";
 import { ListingStore } from "../src/store.js";
 import { syncOnce } from "../src/sync.js";
 import { MultiSourceRadar } from "../src/aggregate/MultiSourceRadar.js";
@@ -468,6 +470,145 @@ describe("Collector Crypt normalize + URL", () => {
     expect(page.listings.every((l) => l.fmv === 200)).toBe(true);
     expect(page.listings.every((l) => l.delta === -25)).toBe(true); // (150-200)/200
     expect(provider.lastPullMeta?.pagesFetched).toBe(3);
+  });
+
+  it("lastEvent is LIST for Buy-now rows; card.status is not sold", () => {
+    const listed = normalizeCcCard({
+      ...sampleCard,
+      status: "Transferred",
+      listing: {
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-08-01T00:00:00.000Z",
+        currency: "USDC",
+        price: 100,
+        marketplace: "CC",
+      },
+    });
+    expect(listed!.lastEvent).toBe("LIST");
+    expect(lastEventFromCcCard(listed!.raw as CcCard)).toBe("LIST");
+    expect((listed!.raw as CcCard).status).toBe("Transferred");
+    // No listing → not normalized (would not appear under marketplaceStatus=Buy now)
+    expect(
+      normalizeCcCard({ ...sampleCard, listing: null }),
+    ).toBeNull();
+    expect(lastEventFromCcCard({ ...sampleCard, listing: null })).toBeNull();
+  });
+
+  it("delist lifecycle: full bootstrap pullAll then warm complete replace produces prunedIds", async () => {
+    // Solana radar path: marketplaceStatus=Buy now absence after complete multi-page
+    // pullAll → missing_from_full_snapshot (no invented sold endpoint).
+    const mk = (id: string, price: number): CcCard => ({
+      ...sampleCard,
+      id,
+      nftAddress: `Mint${id}`,
+      status: "Transferred",
+      insuredValue: price,
+      listing: {
+        createdAt: "2026-08-01T00:00:00.000Z",
+        currency: "USDC",
+        price,
+        marketplace: "CC",
+      },
+      offers: [],
+    });
+
+    // phase full: 3 cards across 2 pages (step=2); warm: drop middle id "gone"
+    let phase: "full" | "warm" = "full";
+    const urls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const u = new URL(String(input));
+      urls.push(u.toString());
+      expect(u.searchParams.get("marketplaceStatus")).toBe("Buy now");
+      expect(u.searchParams.get("blockchain")).toBe("Solana");
+      const page = u.searchParams.get("page") ?? "1";
+      if (phase === "full") {
+        const body =
+          page === "1"
+            ? {
+                filterNFtCard: [mk("keep_a", 10), mk("gone", 20)],
+                findTotal: 3,
+                total: 3,
+                totalPages: 2,
+              }
+            : {
+                filterNFtCard: [mk("keep_c", 30)],
+                findTotal: 3,
+                total: 3,
+                totalPages: 2,
+              };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Warm complete book: keep_a + keep_c only (gone left Buy-now set)
+      const body =
+        page === "1"
+          ? {
+              filterNFtCard: [mk("keep_a", 10), mk("keep_c", 30)],
+              findTotal: 2,
+              total: 2,
+              totalPages: 1,
+            }
+          : {
+              filterNFtCard: [],
+              findTotal: 2,
+              total: 2,
+              totalPages: 1,
+            };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    const provider = createCollectorCryptProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      defaultStep: 2,
+      blockchain: "Solana",
+      maxRetries: 0,
+      pageConcurrency: { start: 1, max: 1 },
+    });
+    const store = new ListingStore();
+
+    const cold = await syncOnce(store, provider, {
+      tcg: "pokemon",
+      bootstrap: true,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(cold.fetched).toBe(3);
+    expect(cold.pruned).toBe(0);
+    expect(cold.prunedIds).toEqual([]);
+    expect(store.size("collectorcrypt")).toBe(3);
+    const goneId = "collectorcrypt:cc:gone";
+    expect(store.get(goneId)).toBeDefined();
+
+    phase = "warm";
+    urls.length = 0;
+    const warm = await syncOnce(store, provider, {
+      tcg: "pokemon",
+      bootstrap: true,
+      shortCircuitOnBuiltAt: false,
+    });
+    expect(warm.fetched).toBe(2);
+    expect(warm.pruned).toBe(1);
+    expect(warm.prunedIds).toEqual([goneId]);
+    expect(store.get(goneId)).toBeUndefined();
+    expect(store.size("collectorcrypt")).toBe(2);
+    // Every browse still filters Buy now (delist signal = absence)
+    expect(urls.length).toBeGreaterThan(0);
+    for (const raw of urls) {
+      expect(new URL(raw).searchParams.get("marketplaceStatus")).toBe("Buy now");
+    }
+
+    const events = applyDelistsFromSync(warm);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      provider: "collectorcrypt",
+      listingId: goneId,
+      reason: "missing_from_full_snapshot",
+      source: "poll_diff",
+    });
   });
 
   it("pullAll multi-page backs off on 429 then merges", async () => {

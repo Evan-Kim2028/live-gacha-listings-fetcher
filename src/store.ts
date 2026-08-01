@@ -7,6 +7,8 @@ export interface UpsertStats {
   upserted: number;
   unchanged: number;
   pruned: number;
+  /** Listing ids actually deleted from the store this apply (left all scopes). */
+  prunedIds: string[];
   total: number;
 }
 
@@ -176,7 +178,7 @@ export class ListingStore {
       this.byId.set(listing.id, listing);
       upserted += 1;
     }
-    return { upserted, unchanged, pruned: 0, total: this.byId.size };
+    return { upserted, unchanged, pruned: 0, prunedIds: [], total: this.byId.size };
   }
 
   /**
@@ -227,7 +229,7 @@ export class ListingStore {
       scopes.add(key);
     }
 
-    let pruned = 0;
+    const prunedIds: string[] = [];
     for (const id of prevScope) {
       if (nextScope.has(id)) continue;
       const scopes = this.idScopes.get(id);
@@ -236,16 +238,22 @@ export class ListingStore {
         if (scopes.size === 0) {
           this.idScopes.delete(id);
           this.byId.delete(id);
-          pruned += 1;
+          prunedIds.push(id);
         }
       } else {
         this.byId.delete(id);
-        pruned += 1;
+        prunedIds.push(id);
       }
     }
 
     this.scopeIds.set(key, nextScope);
-    return { upserted, unchanged, pruned, total: this.byId.size };
+    return {
+      upserted,
+      unchanged,
+      pruned: prunedIds.length,
+      prunedIds,
+      total: this.byId.size,
+    };
   }
 
   /** Ids currently held in a scope (for short-circuit id-set compare). */

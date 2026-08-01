@@ -98,6 +98,7 @@ export async function syncOnce(
         upserted: 0,
         unchanged: scopeIds.size,
         pruned: 0,
+        prunedIds: [],
         activeCount: store.size(provider.id),
         durationMs: Math.round(performance.now() - t0),
         listings: store.listScope(provider.id, qsig),
@@ -146,6 +147,7 @@ export async function syncOnce(
         upserted: 0,
         unchanged: scopeIds.size,
         pruned: 0,
+        prunedIds: [],
         activeCount: store.size(provider.id),
         durationMs: Math.round(performance.now() - t0),
         listings: store.listScope(provider.id, qsig),
@@ -169,6 +171,7 @@ export async function syncOnce(
         upserted: 0,
         unchanged: scopeIds.size,
         pruned: 0,
+        prunedIds: [],
         activeCount: store.size(provider.id),
         durationMs: Math.round(performance.now() - t0),
         listings: store.listScope(provider.id, qsig),
@@ -181,14 +184,11 @@ export async function syncOnce(
     const seenAt =
       page.meta.fetchedAt || new Date().toISOString();
 
-    // Incomplete page safety: never full-replace+prune a large book with a
-    // partial page (e.g. warm poll without bootstrap/maxPages). Upsert only.
-    const incompletePage =
-      scopeNonEmpty &&
-      (page.hasMore === true ||
-        (page.listings.length > 0 &&
-          page.listings.length < scopeIds.size &&
-          pageIds.size < scopeIds.size));
+    // Incomplete page safety: never full-replace+prune when the origin still
+    // has more pages (warm poll without full walk / maxPages). Upsert only.
+    // A smaller page with hasMore === false is a complete snapshot and may prune
+    // (sold/delisted). Soft-fail empty is handled above (no prune).
+    const incompletePage = scopeNonEmpty && page.hasMore === true;
     if (incompletePage) {
       let upserted = 0;
       let unchanged = 0;
@@ -224,6 +224,7 @@ export async function syncOnce(
         upserted,
         unchanged,
         pruned: 0,
+        prunedIds: [],
         activeCount: store.size(provider.id),
         durationMs: Math.round(performance.now() - t0),
         listings: store.listScope(provider.id, qsig),
@@ -262,6 +263,7 @@ export async function syncOnce(
       upserted: stats.upserted,
       unchanged: stats.unchanged,
       pruned: stats.pruned,
+      prunedIds: stats.prunedIds,
       activeCount: store.size(provider.id),
       durationMs: Math.round(performance.now() - t0),
       listings: store.listScope(provider.id, qsig),

@@ -109,6 +109,12 @@ export interface SyncResult {
   unchanged: number;
   /** Rows removed because they left this query's snapshot */
   pruned: number;
+  /**
+   * Listing ids deleted on this apply (from replaceScopeSnapshot).
+   * Empty on soft-fail / incomplete-page / short-circuit (no prune).
+   * Callers use this for delist lifecycle without re-diffing the store.
+   */
+  prunedIds: string[];
   activeCount: number;
   durationMs: number;
   listings: Listing[];
