@@ -1,0 +1,28 @@
+[
+  {
+    "id": "fixture_bids:scry:demo|psa|10:bid-1",
+    "provider": "fixture_bids",
+    "instrumentKey": "scry:me2pt5-289|cgc|10",
+    "nativeId": "bid-1",
+    "side": "bid",
+    "price": 400,
+    "size": 1,
+    "currency": "USDC",
+    "bidder": "0xbuyer1",
+    "platform": "fixture",
+    "updatedAt": "2026-08-01T08:00:00.000Z"
+  },
+  {
+    "id": "fixture_bids:scry:demo|psa|10:bid-2",
+    "provider": "fixture_bids",
+    "instrumentKey": "scry:me2pt5-289|cgc|10",
+    "nativeId": "bid-2",
+    "side": "bid",
+    "price": 390,
+    "size": 2,
+    "currency": "USDC",
+    "bidder": "0xbuyer2",
+    "platform": "fixture",
+    "updatedAt": "2026-08-01T08:00:01.000Z"
+  }
+]

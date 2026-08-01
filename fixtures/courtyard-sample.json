@@ -1,0 +1,26 @@
+{
+  "listings": [
+    {
+      "token_id": "cy-token-001",
+      "name": "2024 Courtyard Fixture Charizard PSA 10",
+      "price": 199.5,
+      "currency": "USDC",
+      "tcg": "pokemon",
+      "grader": "PSA",
+      "grade_num": 10,
+      "listed_at": "2026-08-01T10:00:00.000Z",
+      "seller": "0xseller1",
+      "image_url": "https://example.com/cy1.jpg"
+    },
+    {
+      "tokenId": "cy-token-002",
+      "title": "2025 Fixture Pikachu CGC 10",
+      "listPrice": 45,
+      "currency": "USDC",
+      "tcg": "pokemon",
+      "grader": "CGC",
+      "gradeNum": 10,
+      "listedAt": "2026-08-01T10:01:00.000Z"
+    }
+  ]
+}

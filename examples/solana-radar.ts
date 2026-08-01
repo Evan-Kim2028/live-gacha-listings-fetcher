@@ -1,0 +1,139 @@
+/**
+ * Solana multi-source radar — one-shot timed pull + optional PollEngine loop.
+ *
+ * Real-time strategy (no single SSE for all origins):
+ *   PollEngine parallel, minIntervalMs 15–30s per source (CC CDN s-maxage≈30).
+ *   Each origin (CC / ME / Phygitals; optional Beezie via includeBeezie) is polled independently.
+ *
+ *   npx tsx examples/solana-radar.ts
+ *   npx tsx examples/solana-radar.ts --poll
+ *   npx tsx examples/solana-radar.ts --poll --seconds 30 --interval-ms 20000
+ */
+import {
+  MultiSourceRadar,
+  createSolanaProviders,
+  PollEngine,
+  CollectorCryptBidsProvider,
+  MagicEdenBidsProvider,
+  OrderbookFeed,
+} from "../src/index.js";
+
+function flagNum(args: string[], name: string): number | undefined {
+  const i = args.indexOf(name);
+  if (i < 0) return undefined;
+  const n = Number(args[i + 1]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const doPoll = args.includes("--poll");
+  const seconds = flagNum(args, "--seconds") ?? 30;
+  // 15–30s per source; default 20s for Solana real-time
+  const intervalMs = flagNum(args, "--interval-ms") ?? 20_000;
+  const limit = flagNum(args, "--limit") ?? 15;
+
+  const providers = createSolanaProviders();
+  const filter = { tcg: "pokemon" as const, limit, sort: "new" as const };
+  const radar = new MultiSourceRadar({ providers, filter });
+
+  // --- One-shot timed total pull ---
+  const t0 = performance.now();
+  const result = await radar.syncAll();
+  const oneShotMs = Math.round(performance.now() - t0);
+
+  const hasMe = providers.some((p) => p.id === "magiceden");
+  const bookFeed = new OrderbookFeed({
+    listingStore: radar.store,
+    listingFilter: filter,
+    native: true,
+    bidsProvider: [
+      new CollectorCryptBidsProvider(),
+      ...(hasMe ? [new MagicEdenBidsProvider({ sampleMints: 8 })] : []),
+    ],
+  });
+  await bookFeed.start();
+
+  let pollTicks = 0;
+  let pollDurationMs = 0;
+
+  // --- Optional PollEngine: parallel per-source, minInterval 15–30s ---
+  if (doPoll) {
+    const poll = new PollEngine({
+      store: radar.store,
+      providers,
+      filter,
+      minIntervalMs: intervalMs,
+      tickMs: Math.min(5_000, intervalMs),
+      parallel: true,
+      onSync: (id, r) => {
+        pollTicks += 1;
+        bookFeed.refreshAsks();
+        if (process.env.DEBUG) {
+          console.error(
+            `[solana-poll] ${id} upserted=${r.upserted} active=${r.activeCount}`,
+          );
+        }
+      },
+    });
+    const p0 = performance.now();
+    poll.start();
+    await new Promise((r) => setTimeout(r, seconds * 1000));
+    poll.stop();
+    pollDurationMs = Math.round(performance.now() - p0);
+  }
+
+  const book = bookFeed.getOrderbookStore();
+  bookFeed.stop();
+
+  const usedTradedGg = providers.some((p) => p.id === "tradedgg");
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: result.totalActive > 0 && !usedTradedGg,
+        mode: doPoll ? "one-shot+poll" : "one-shot",
+        sources: providers.map((p) => p.id),
+        filter,
+        oneShotMs,
+        totalActive: result.totalActive,
+        byProvider: result.byProvider,
+        errors: result.errors,
+        ...(doPoll
+          ? {
+              pollSeconds: seconds,
+              minIntervalMs: intervalMs,
+              parallel: true,
+              pollTicks,
+              pollDurationMs,
+              afterPollActive: radar.store.size(),
+            }
+          : {}),
+        sampleListings: radar
+          .list({ clientFilter: true })
+          .slice(0, 3)
+          .map((l) => ({
+            id: l.id,
+            provider: l.provider,
+            price: l.price,
+            name: l.name.slice(0, 50),
+            platform: l.platform,
+          })),
+        bidCount: book.allBids().length,
+        askCount: book.allAsks().length,
+        usedTradedGg,
+        note:
+          "Solana real-time: PollEngine parallel minInterval 15–30s per origin — no single SSE for all sources",
+      },
+      null,
+      2,
+    ),
+  );
+
+  if (result.totalActive < 1 || usedTradedGg) process.exit(1);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

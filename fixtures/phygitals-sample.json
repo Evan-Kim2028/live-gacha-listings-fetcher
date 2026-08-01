@@ -1,0 +1,97 @@
+{
+  "listings": [
+    {
+      "address": "6sRw5SiUSNu79Nvv2XFjVSJuHJE26X8HTDerV6TWJvQ",
+      "slug": "2023-magikarp-151-129-464062",
+      "name": "2023 Magikarp 151 #129",
+      "image": "https://gateway.irys.xyz/cwAgiOS9fjhm0txDt1xR0GWAu7xunP0Cg8c2wcaMnjM",
+      "owner": "DNMKGBRxpsGoNjt8iycrB5G2UXWsnqhJdd4MQeV2KPoi",
+      "collection_address": "phygZDQZJZVHvJGYPGoKPYUtXw7mstSYtTtcuh8LJcC",
+      "price": "300000",
+      "listed": true,
+      "altFmv": null,
+      "marketplace": "TENSOR",
+      "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "metadata": [
+        {
+          "key": "Name",
+          "value": "Magikarp"
+        },
+        {
+          "key": "Set",
+          "value": "151"
+        },
+        {
+          "key": "Type",
+          "value": "Pok\u00e9mon"
+        },
+        {
+          "key": "Rarity",
+          "value": "Common"
+        },
+        {
+          "key": "Grade",
+          "value": "Ungraded"
+        },
+        {
+          "key": "Language",
+          "value": "English"
+        }
+      ],
+      "offers": [],
+      "mostRecentListActivity": {
+        "universalNFTDataAddress": "6sRw5SiUSNu79Nvv2XFjVSJuHJE26X8HTDerV6TWJvQ",
+        "time": "2026-07-24T14:52:47.000Z"
+      }
+    },
+    {
+      "address": "3mtLLYXGck2vM1od3gDTbVtSK9Nb3iyNGJ35L8NjyScs",
+      "slug": "2023-pupitar-paldea-evolved-111-656293",
+      "name": "2023 Pupitar Pal",
+      "image": "https://gateway.irys.xyz/KTD8mr15DYPaFRYFgvstixDcR0mBPI5thG9TyVDW5Qw",
+      "owner": "FJBZ5EZuA8TRnc73HkB6wkY9TiMsDJFUeHhpr7dxeg23",
+      "collection_address": "BSG6DyEihFFtfvxtL9mKYsvTwiZXB1rq5gARMTJC2xAM",
+      "price": "310000",
+      "listed": true,
+      "altFmv": null,
+      "marketplace": "TENSOR",
+      "currency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "metadata": [
+        {
+          "key": "Name",
+          "value": "Pupitar"
+        },
+        {
+          "key": "Set",
+          "value": "Paldea Evolved"
+        },
+        {
+          "key": "Type",
+          "value": "Pok\ufffdmon"
+        },
+        {
+          "key": "Rarity",
+          "value": "Uncommon"
+        },
+        {
+          "key": "Grade",
+          "value": "Ungraded"
+        },
+        {
+          "key": "Title",
+          "value": "2023 Pupitar Paldea Evolved #111"
+        },
+        {
+          "key": "Language",
+          "value": "English"
+        }
+      ],
+      "offers": [],
+      "mostRecentListActivity": {
+        "universalNFTDataAddress": "3mtLLYXGck2vM1od3gDTbVtSK9Nb3iyNGJ35L8NjyScs",
+        "time": "2026-07-01T09:23:10.000Z"
+      }
+    }
+  ],
+  "amount": 9302
+}

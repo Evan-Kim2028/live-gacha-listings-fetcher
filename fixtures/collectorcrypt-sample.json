@@ -1,0 +1,116 @@
+{
+  "filterNFtCard": [
+    {
+      "id": "202607062C176912",
+      "itemName": "2026 #051 Pikachu PSA 9 Tef EN-Temporal Forces",
+      "nftAddress": "2w1XbDvP9k2pGP313VKmu8QpS3Ja1nSXLyUuQZG1MK7D",
+      "category": "Pokemon",
+      "type": "Card",
+      "year": 2026,
+      "grade": "MINT 9",
+      "gradeNum": null,
+      "gradingCompany": "PSA",
+      "set": "Pokemon Tef EN-Temporal Forces",
+      "serial": "051",
+      "insuredValue": "32",
+      "blockchain": "Solana",
+      "listing": {
+        "createdAt": "2026-07-31T03:36:22.354Z",
+        "currency": "USDC",
+        "price": 37,
+        "receiptId": "v2_4fXXMLCUf2QUXid3",
+        "sellerId": "cmqsy3n1a03c481ffe7x78l2t",
+        "updatedAt": "2026-08-01T20:37:07.743Z",
+        "marketplace": "CC"
+      },
+      "offers": [
+        {
+          "id": "68e1cc2f-1372-45a1-aae4-63cb8e70066a"
+        },
+        {
+          "id": "4b315b46-636a-4aa5-a36e-29c74e53fc29"
+        },
+        {
+          "id": "66015b99-746b-44de-bac1-cb94802f6802"
+        }
+      ],
+      "owner": {
+        "id": "cmqsy3n1a03c481ffe7x78l2t",
+        "name": null,
+        "wallet": "EofCkTaFXUjdwpQdbTnjMsZD1nqjGTenUGFsfEdkraYN"
+      },
+      "images": {
+        "frontS": "https://d1xpxki1g4htqu.cloudfront.net/lKQDNlZxksulQUa3MIM1R9KLnvDN5V_NRC62-C9SWI8",
+        "frontM": "https://d1xpxki1g4htqu.cloudfront.net/ZVBk2IJMTYrlYFUGxOSJI65rqz7FQU2j4tx6l1COzE8",
+        "front": "https://d1xpxki1g4htqu.cloudfront.net/lErUOvKWD8aW5erFCHqHlPWM1g_NpliheqO1t8Y9V0k"
+      }
+    },
+    {
+      "id": "2026060712C140297",
+      "itemName": "1999 #85 Pokemon Center PSA 10 Game",
+      "nftAddress": "FW3yjzFH4s2uCEpgU3F1faMxj2uEqGYqHj8gMti8jsGJ",
+      "category": "Pokemon",
+      "type": "Card",
+      "year": 1999,
+      "grade": "GEM-MT 10",
+      "gradeNum": null,
+      "gradingCompany": "PSA",
+      "set": "Pokemon Game",
+      "serial": "85",
+      "insuredValue": "600",
+      "blockchain": "Solana",
+      "listing": {
+        "createdAt": "2026-07-30T21:30:41.029Z",
+        "currency": "USDC",
+        "price": 654,
+        "receiptId": "v2_4Fq8foD4GzqvuGBu",
+        "sellerId": "cmqsy3n1a03c481ffe7x78l2t",
+        "updatedAt": "2026-08-01T20:37:00.433Z",
+        "marketplace": "CC"
+      },
+      "offers": [
+        {
+          "id": "ac419271-85b4-4af5-bad9-5d68140850c9"
+        },
+        {
+          "id": "0f491b00-e345-4b6f-b4e2-5774802fd535"
+        },
+        {
+          "id": "e4a574d0-aa2a-41ff-8eab-82d54b07a10b"
+        }
+      ],
+      "owner": {
+        "id": "cmqsy3n1a03c481ffe7x78l2t",
+        "name": null,
+        "wallet": "EofCkTaFXUjdwpQdbTnjMsZD1nqjGTenUGFsfEdkraYN"
+      },
+      "images": {
+        "frontS": "https://d1xpxki1g4htqu.cloudfront.net/TOk7yrUIZt-qh4fb7PvyREnDygDg1irsHmCNF5SFE58",
+        "frontM": "https://d1xpxki1g4htqu.cloudfront.net/z6A9wyLRonO4HMs9BVu58xyMI3-akBNjB-t5Gr2BW_0",
+        "front": "https://d1xpxki1g4htqu.cloudfront.net/59TJ0Li5pqIivw4J35tfkWI--lIBMU6Eh_me_ujwZ40"
+      }
+    },
+    {
+      "id": "card_no_mint_fixture",
+      "itemName": "Synthetic no-mint row",
+      "category": "Pokemon",
+      "type": "Card",
+      "listing": {
+        "createdAt": "2026-08-01T00:00:00.000Z",
+        "currency": "USDC",
+        "price": 12.5,
+        "marketplace": "CC"
+      },
+      "owner": {
+        "wallet": "SellerFixture1"
+      },
+      "images": {
+        "frontS": "https://example.com/cc-fixture.png"
+      },
+      "insuredValue": "15"
+    }
+  ],
+  "findTotal": 10547,
+  "total": 123545,
+  "totalPages": 5274
+}

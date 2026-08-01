@@ -1,0 +1,444 @@
+{
+  "total": 5,
+  "universe": 32908,
+  "builtAt": "2026-08-01T07:31:46.157Z",
+  "facets": {
+    "platform": [
+      {
+        "value": "courtyard",
+        "n": 16777
+      },
+      {
+        "value": "cc",
+        "n": 13496
+      },
+      {
+        "value": "beezie",
+        "n": 828
+      },
+      {
+        "value": "renaiss",
+        "n": 551
+      },
+      {
+        "value": "dyli",
+        "n": 234
+      }
+    ],
+    "tcg": [
+      {
+        "value": "pokemon",
+        "n": 28952
+      },
+      {
+        "value": "one_piece",
+        "n": 2934
+      }
+    ],
+    "itemType": [
+      {
+        "value": "card",
+        "n": 28869
+      },
+      {
+        "value": "sealed",
+        "n": 3017
+      }
+    ],
+    "language": [
+      {
+        "value": "EN",
+        "n": 19684
+      },
+      {
+        "value": "JA",
+        "n": 11559
+      },
+      {
+        "value": "ZH",
+        "n": 383
+      },
+      {
+        "value": "KO",
+        "n": 94
+      },
+      {
+        "value": "DE",
+        "n": 42
+      },
+      {
+        "value": "zh-Hans",
+        "n": 37
+      },
+      {
+        "value": "ID",
+        "n": 35
+      },
+      {
+        "value": "FR",
+        "n": 16
+      },
+      {
+        "value": "ES",
+        "n": 11
+      },
+      {
+        "value": "IT",
+        "n": 10
+      },
+      {
+        "value": "zh-Hant",
+        "n": 8
+      },
+      {
+        "value": "PT",
+        "n": 4
+      },
+      {
+        "value": "TH",
+        "n": 3
+      }
+    ],
+    "grader": [
+      {
+        "value": "PSA",
+        "n": 17005
+      },
+      {
+        "value": "CGC",
+        "n": 11261
+      },
+      {
+        "value": "BGS",
+        "n": 424
+      },
+      {
+        "value": "TAG",
+        "n": 86
+      },
+      {
+        "value": "SGC",
+        "n": 19
+      },
+      {
+        "value": "PCA",
+        "n": 15
+      },
+      {
+        "value": "AGS",
+        "n": 9
+      },
+      {
+        "value": "CGC Trading Cards",
+        "n": 6
+      },
+      {
+        "value": "Cgc",
+        "n": 4
+      },
+      {
+        "value": "Bgs",
+        "n": 2
+      },
+      {
+        "value": "HGA",
+        "n": 1
+      }
+    ],
+    "grade": [
+      {
+        "value": "10",
+        "n": 17722
+      },
+      {
+        "value": "9",
+        "n": 6523
+      },
+      {
+        "value": "8",
+        "n": 1681
+      },
+      {
+        "value": "9.5",
+        "n": 688
+      },
+      {
+        "value": "7",
+        "n": 601
+      },
+      {
+        "value": "8.5",
+        "n": 589
+      },
+      {
+        "value": "6",
+        "n": 401
+      },
+      {
+        "value": "5",
+        "n": 214
+      },
+      {
+        "value": "7.5",
+        "n": 130
+      },
+      {
+        "value": "4",
+        "n": 79
+      },
+      {
+        "value": "6.5",
+        "n": 59
+      },
+      {
+        "value": "3",
+        "n": 35
+      },
+      {
+        "value": "1",
+        "n": 34
+      },
+      {
+        "value": "5.5",
+        "n": 26
+      },
+      {
+        "value": "2",
+        "n": 20
+      },
+      {
+        "value": "3.5",
+        "n": 10
+      },
+      {
+        "value": "4.5",
+        "n": 7
+      },
+      {
+        "value": "2.5",
+        "n": 1
+      }
+    ],
+    "canonical": [
+      {
+        "value": "yes",
+        "n": 26387
+      },
+      {
+        "value": "no",
+        "n": 5499
+      }
+    ],
+    "activity": [
+      {
+        "value": "new",
+        "n": 24870
+      },
+      {
+        "value": "reprice",
+        "n": 7016
+      },
+      {
+        "value": "drop",
+        "n": 4593
+      }
+    ]
+  },
+  "rows": [
+    {
+      "instance_id": "24a95c4e-4ae6-5a27-afbd-a18d0f196a00",
+      "platform": "courtyard",
+      "token_id": "46f3e621f7307396d0e7cf19db2ef881897ebaf5b6b35bf065dcb2118e8a9212",
+      "seller": "0xA477E6938B9607d3038C6376ea4dB908681b6925",
+      "market": "Courtyard",
+      "contract_address": "0x251be3a17af4892035c37ebf5890f4a4d889dcad",
+      "name": "2024 Prismatic Evolutions - PRE EN #076/131 Snorlax ex - Snorlax & Blissey ex Special Collection (Set Stamp) (Holo) (CGC 9 MINT)",
+      "image_url": "https://static.courtyard.io/graded-cards-renders/CGC%206122488238/nft_image.jpg",
+      "external_url": "https://courtyard.io/asset/46f3e621f7307396d0e7cf19db2ef881897ebaf5b6b35bf065dcb2118e8a9212",
+      "price": 12.25,
+      "price_native": 12.25,
+      "price_converted": false,
+      "currency": "USDC",
+      "fmv": 11,
+      "delta": 11,
+      "listed_at": "2026-08-01T07:31:15+00:00",
+      "grader": "CGC",
+      "grade": "9 MINT",
+      "grade_num": 9,
+      "tcg": "pokemon",
+      "item_type": "card",
+      "language": "EN",
+      "set_raw": "Prismatic Evolutions - PRE EN",
+      "card_number": "076/131",
+      "raw_name": "2024 Prismatic Evolutions - PRE EN #076/131 Snorlax ex - Snorlax & Blissey ex Special Collection (Set Stamp) (Holo) (CGC 9 MINT)",
+      "year": 2024,
+      "canonical": {
+        "name": "Snorlax ex",
+        "number": "76",
+        "scrydex_id": "sv8pt5-76",
+        "image": "https://images.scrydex.com/pokemon/sv8pt5-76/small"
+      },
+      "confidence": 0.9,
+      "last_event": "PRICE_UPDATE",
+      "prev_price": 12.75,
+      "first_listed_at": "2026-07-28T01:45:47+00:00",
+      "search": "2024 prismatic evolutions - pre en #076/131 snorlax ex - snorlax & blissey ex special collection (set stamp) (holo) (cgc 9 mint) prismatic evolutions - pre en snorlax ex 076/131 snorlax ex cgc 9 mint"
+    },
+    {
+      "instance_id": "79e1e6c4-e78a-5b96-b9d9-fe79b1bd9edf",
+      "platform": "courtyard",
+      "token_id": "f9a5de9cf6ae6b2fc7b01d342b3e5748c1bd5494490c56f481deda52b0378fe8",
+      "seller": "0x65eb5443E9f3A9448632221a3626F467295953Ce",
+      "market": "Courtyard",
+      "contract_address": "0x251be3a17af4892035c37ebf5890f4a4d889dcad",
+      "name": "2022 Promotional Cards - English #OP12-108 Donquixote Rosinante - Illustration Box Vol.6 (Borderless) (CGC 10 PRISTINE)",
+      "image_url": "https://static.courtyard.io/graded-cards-renders/CGC%206152414052/nft_image.jpg",
+      "external_url": "https://courtyard.io/asset/f9a5de9cf6ae6b2fc7b01d342b3e5748c1bd5494490c56f481deda52b0378fe8",
+      "price": 23,
+      "price_native": 23,
+      "price_converted": false,
+      "currency": "USDC",
+      "fmv": 21.9,
+      "delta": 5,
+      "listed_at": "2026-08-01T07:31:13+00:00",
+      "grader": "CGC",
+      "grade": "10 PRISTINE",
+      "grade_num": 10,
+      "tcg": "one_piece",
+      "item_type": "card",
+      "language": "EN",
+      "set_raw": "Promotional Cards - English",
+      "card_number": "OP12-108",
+      "raw_name": "2022 Promotional Cards - English #OP12-108 Donquixote Rosinante - Illustration Box Vol.6 (Borderless) (CGC 10 PRISTINE)",
+      "year": 2022,
+      "canonical": {
+        "name": "Donquixote Rosinante",
+        "number": "108",
+        "scrydex_id": "OP12-108",
+        "image": "https://images.scrydex.com/onepiece/OP12-108/small"
+      },
+      "confidence": 0.92,
+      "last_event": "LIST",
+      "prev_price": null,
+      "first_listed_at": "2026-08-01T07:31:13+00:00",
+      "search": "2022 promotional cards - english #op12-108 donquixote rosinante - illustration box vol.6 (borderless) (cgc 10 pristine) promotional cards - english donquixote rosinante op12-108 donquixote rosinante cgc 10 pristine"
+    },
+    {
+      "instance_id": "2eb75625-f769-5dce-8c7d-a70ec98740b2",
+      "platform": "courtyard",
+      "token_id": "f946f5d55ae4cdf17a1242ff8bb2d95edb9661cdfdaf248a497ee1daefc55aa7",
+      "seller": "0x0dc88513b5818c1E4447fEb345661bA39ea77306",
+      "market": "Courtyard",
+      "contract_address": "0x251be3a17af4892035c37ebf5890f4a4d889dcad",
+      "name": "2024 Journey Together - JTG EN #177/159 Salamence ex - Ultra Rare Holo (CGC 9 MINT)",
+      "image_url": "https://static.courtyard.io/graded-cards-renders/CGC%206122967066/nft_image.jpg",
+      "external_url": "https://courtyard.io/asset/f946f5d55ae4cdf17a1242ff8bb2d95edb9661cdfdaf248a497ee1daefc55aa7",
+      "price": 12.9,
+      "price_native": 12.9,
+      "price_converted": false,
+      "currency": "USDC",
+      "fmv": 12.9,
+      "delta": 0,
+      "listed_at": "2026-08-01T07:31:04+00:00",
+      "grader": "CGC",
+      "grade": "9 MINT",
+      "grade_num": 9,
+      "tcg": "pokemon",
+      "item_type": "card",
+      "language": "EN",
+      "set_raw": "Journey Together - JTG EN",
+      "card_number": "177/159",
+      "raw_name": "2024 Journey Together - JTG EN #177/159 Salamence ex - Ultra Rare Holo (CGC 9 MINT)",
+      "year": 2024,
+      "canonical": {
+        "name": "Salamence ex",
+        "number": "177",
+        "scrydex_id": "sv9-177",
+        "image": "https://images.scrydex.com/pokemon/sv9-177/small"
+      },
+      "confidence": 0.9,
+      "last_event": "LIST",
+      "prev_price": null,
+      "first_listed_at": "2026-08-01T07:31:04+00:00",
+      "search": "2024 journey together - jtg en #177/159 salamence ex - ultra rare holo (cgc 9 mint) journey together - jtg en salamence ex 177/159 salamence ex cgc 9 mint"
+    },
+    {
+      "instance_id": "fixture-cc-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "platform": "cc",
+      "token_id": "MintABC123",
+      "seller": "0xA477E6938B9607d3038C6376ea4dB908681b6925",
+      "market": "CC Native",
+      "contract_address": "0x251be3a17af4892035c37ebf5890f4a4d889dcad",
+      "name": "Fixture CC Card",
+      "image_url": "https://static.courtyard.io/graded-cards-renders/CGC%206122488238/nft_image.jpg",
+      "external_url": "https://courtyard.io/asset/46f3e621f7307396d0e7cf19db2ef881897ebaf5b6b35bf065dcb2118e8a9212",
+      "price": 42.5,
+      "price_native": 12.25,
+      "price_converted": false,
+      "currency": "USDC",
+      "fmv": 11,
+      "delta": 11,
+      "listed_at": "2026-08-01T07:00:00+00:00",
+      "grader": "CGC",
+      "grade": "9 MINT",
+      "grade_num": 9,
+      "tcg": "pokemon",
+      "item_type": "card",
+      "language": "EN",
+      "set_raw": "Prismatic Evolutions - PRE EN",
+      "card_number": "076/131",
+      "raw_name": "2024 Prismatic Evolutions - PRE EN #076/131 Snorlax ex - Snorlax & Blissey ex Special Collection (Set Stamp) (Holo) (CGC 9 MINT)",
+      "year": 2024,
+      "canonical": {
+        "name": "Snorlax ex",
+        "number": "76",
+        "scrydex_id": "sv8pt5-76",
+        "image": "https://images.scrydex.com/pokemon/sv8pt5-76/small"
+      },
+      "confidence": 0.9,
+      "last_event": "PRICE_UPDATE",
+      "prev_price": 12.75,
+      "first_listed_at": "2026-07-28T01:45:47+00:00",
+      "search": "2024 prismatic evolutions - pre en #076/131 snorlax ex - snorlax & blissey ex special collection (set stamp) (holo) (cgc 9 mint) prismatic evolutions - pre en snorlax ex 076/131 snorlax ex cgc 9 mint"
+    },
+    {
+      "instance_id": "fixture-courtyard-11111111-2222-3333-4444-555555555555",
+      "platform": "courtyard",
+      "token_id": "0xdeadbeef",
+      "seller": "0xA477E6938B9607d3038C6376ea4dB908681b6925",
+      "market": "Courtyard",
+      "contract_address": "0x251be3a17af4892035c37ebf5890f4a4d889dcad",
+      "name": "Fixture Courtyard Card",
+      "image_url": "https://static.courtyard.io/graded-cards-renders/CGC%206122488238/nft_image.jpg",
+      "external_url": "https://courtyard.io/asset/46f3e621f7307396d0e7cf19db2ef881897ebaf5b6b35bf065dcb2118e8a9212",
+      "price": 19.99,
+      "price_native": 12.25,
+      "price_converted": false,
+      "currency": "USDC",
+      "fmv": 11,
+      "delta": 11,
+      "listed_at": "2026-08-01T07:01:00+00:00",
+      "grader": "CGC",
+      "grade": "9 MINT",
+      "grade_num": 9,
+      "tcg": "pokemon",
+      "item_type": "card",
+      "language": "EN",
+      "set_raw": "Prismatic Evolutions - PRE EN",
+      "card_number": "076/131",
+      "raw_name": "2024 Prismatic Evolutions - PRE EN #076/131 Snorlax ex - Snorlax & Blissey ex Special Collection (Set Stamp) (Holo) (CGC 9 MINT)",
+      "year": 2024,
+      "canonical": {
+        "name": "Snorlax ex",
+        "number": "76",
+        "scrydex_id": "sv8pt5-76",
+        "image": "https://images.scrydex.com/pokemon/sv8pt5-76/small"
+      },
+      "confidence": 0.9,
+      "last_event": "PRICE_UPDATE",
+      "prev_price": 12.75,
+      "first_listed_at": "2026-07-28T01:45:47+00:00",
+      "search": "2024 prismatic evolutions - pre en #076/131 snorlax ex - snorlax & blissey ex special collection (set stamp) (holo) (cgc 9 mint) prismatic evolutions - pre en snorlax ex 076/131 snorlax ex cgc 9 mint"
+    }
+  ]
+}

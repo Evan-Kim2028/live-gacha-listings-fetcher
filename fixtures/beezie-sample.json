@@ -1,0 +1,27 @@
+{
+  "dropItems": [
+    {
+      "id": 9001,
+      "tokenId": 1001,
+      "creatorAddress": "0xCdd60e7B7ADe44053a67349A6E856c0aE33d2B91",
+      "owner": "0x027a1054714a70f26359b05201accdc791999ec0",
+      "metadata": {
+        "name": "Beezie Fixture Card",
+        "image": "https://images.beezie.com/base/fixture.jpg",
+        "attributes": [
+          { "trait_type": "Category", "trait_value": "Pokemon" },
+          { "trait_type": "grader", "trait_value": "PSA" },
+          { "trait_type": "grade", "trait_value": "10" },
+          { "trait_type": "set name", "trait_value": "Base" },
+          { "trait_type": "card number", "trait_value": "4" }
+        ]
+      },
+      "altFmv": "18.00",
+      "SellOrder": {
+        "amountUSDC": "22.00",
+        "createdAt": 1700000000000
+      }
+    }
+  ],
+  "total": 1
+}

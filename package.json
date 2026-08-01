@@ -1,0 +1,66 @@
+{
+  "name": "traded-listings",
+  "version": "0.1.0",
+  "description": "Self-serve multi-source TCG listings radar: native marketplace pulls, scoped store, bootstrap + warm poll, orderbook (no traded.gg required).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "traded-listings": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sync": "tsx src/cli.ts sync",
+    "consumer": "tsx examples/consumer.ts",
+    "stream:accuracy": "tsx examples/stream-accuracy.ts",
+    "native-radar": "tsx examples/native-radar.ts",
+    "solana-radar": "tsx examples/solana-radar.ts",
+    "bench-snapshot": "tsx examples/bench-snapshot.ts",
+    "runtime-monitor": "tsx examples/runtime-monitor.ts",
+    "trader-hud": "tsx examples/trader-hud.ts",
+    "bootstrap-book": "tsx examples/bootstrap-book.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Evan-Kim2028/traded-listings.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Evan-Kim2028/traded-listings/issues"
+  },
+  "homepage": "https://github.com/Evan-Kim2028/traded-listings#readme",
+  "keywords": [
+    "tcg",
+    "pokemon",
+    "listings",
+    "orderbook",
+    "solana",
+    "collector-crypt",
+    "magic-eden"
+  ],
+  "author": "Evan Kim"
+}
