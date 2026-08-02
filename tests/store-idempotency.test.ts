@@ -461,4 +461,244 @@ describe("mass-prune guard (partial warm walk)", () => {
     expect(r.pruned).toBe(0);
     expect(store.size("fixture")).toBe(300);
   });
+
+  it("syncOnce does not mass-prune when >10% of large scope missing despite full-looking page", async () => {
+    const store = new ListingStore();
+    const rows = Array.from({ length: 500 }, (_, i) => {
+      const nativeId = `m${i}`;
+      return {
+        id: listingId({ provider: "fixture", platform: "cc", nativeId }),
+        provider: "fixture",
+        platform: "cc",
+        nativeId,
+        tokenId: null,
+        name: `Card ${i}`,
+        price: 10 + i,
+        currency: "USDC",
+        fmv: null,
+        delta: null,
+        market: null,
+        seller: null,
+        externalUrl: null,
+        imageUrl: null,
+        listedAt: null,
+        firstListedAt: null,
+        lastEvent: null,
+        tcg: "pokemon",
+        itemType: null,
+        grader: null,
+        grade: null,
+        gradeNum: null,
+        language: null,
+        setRaw: null,
+        cardNumber: null,
+        year: null,
+        confidence: null,
+        canonical: null,
+        contractAddress: null,
+      };
+    });
+    const pFull: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: rows,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b1",
+            total: rows.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    await syncOnce(store, pFull, { tcg: "pokemon", sort: "new" });
+    expect(store.size("fixture")).toBe(500);
+
+    // Keep 88% of prior ids + pad with dups so raw length looks full;
+    // unique set passes the <50% size guard, but missing ratio is 12% →
+    // mass-drop guard must block prune (live Phygitals thrash pattern).
+    const kept = rows.slice(0, 440);
+    const padded = [...kept, ...kept.slice(0, 200)]; // length 640 > 50% of 500
+    const pThrash: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: padded,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b2",
+            total: padded.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    const r = await syncOnce(store, pThrash, { tcg: "pokemon", sort: "new" });
+    expect(r.pruned).toBe(0);
+    expect(store.size("fixture")).toBe(500);
+  });
+
+  it("syncOnce does not mass-prune when >200 absences on large scope", async () => {
+    const store = new ListingStore();
+    const rows = Array.from({ length: 1000 }, (_, i) => {
+      const nativeId = `a${i}`;
+      return {
+        id: listingId({ provider: "fixture", platform: "cc", nativeId }),
+        provider: "fixture",
+        platform: "cc",
+        nativeId,
+        tokenId: null,
+        name: `Card ${i}`,
+        price: 10 + i,
+        currency: "USDC",
+        fmv: null,
+        delta: null,
+        market: null,
+        seller: null,
+        externalUrl: null,
+        imageUrl: null,
+        listedAt: null,
+        firstListedAt: null,
+        lastEvent: null,
+        tcg: "pokemon",
+        itemType: null,
+        grader: null,
+        grade: null,
+        gradeNum: null,
+        language: null,
+        setRaw: null,
+        cardNumber: null,
+        year: null,
+        confidence: null,
+        canonical: null,
+        contractAddress: null,
+      };
+    });
+    const pFull: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: rows,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b1",
+            total: rows.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    await syncOnce(store, pFull, { tcg: "pokemon", sort: "new" });
+    // drop 250 ids (25%) — ratio guard also hits; keep unique large
+    const kept = rows.slice(0, 750);
+    const pAbs: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: kept,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b2",
+            total: kept.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    // 250 missing is >200 abs and >10% — no prune
+    const r = await syncOnce(store, pAbs, { tcg: "pokemon", sort: "new" });
+    expect(r.pruned).toBe(0);
+    expect(store.size("fixture")).toBe(1000);
+  });
+
+  it("syncOnce still prunes small real churn under 10% missing", async () => {
+    const store = new ListingStore();
+    const rows = Array.from({ length: 500 }, (_, i) => {
+      const nativeId = `s${i}`;
+      return {
+        id: listingId({ provider: "fixture", platform: "cc", nativeId }),
+        provider: "fixture",
+        platform: "cc",
+        nativeId,
+        tokenId: null,
+        name: `Card ${i}`,
+        price: 10 + i,
+        currency: "USDC",
+        fmv: null,
+        delta: null,
+        market: null,
+        seller: null,
+        externalUrl: null,
+        imageUrl: null,
+        listedAt: null,
+        firstListedAt: null,
+        lastEvent: null,
+        tcg: "pokemon",
+        itemType: null,
+        grader: null,
+        grade: null,
+        gradeNum: null,
+        language: null,
+        setRaw: null,
+        cardNumber: null,
+        year: null,
+        confidence: null,
+        canonical: null,
+        contractAddress: null,
+      };
+    });
+    const pFull: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: rows,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b1",
+            total: rows.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    await syncOnce(store, pFull, { tcg: "pokemon", sort: "new" });
+    // drop 5% (25 ids) — should prune
+    const kept = rows.slice(0, 475);
+    const pSmall: ListingsProvider = {
+      id: "fixture",
+      async pull() {
+        return {
+          listings: kept,
+          hasMore: false,
+          meta: {
+            provider: "fixture",
+            builtAt: "b2",
+            total: kept.length,
+            universe: null,
+            fetchedAt: new Date().toISOString(),
+            querySignature: "",
+          },
+        };
+      },
+    };
+    const r = await syncOnce(store, pSmall, { tcg: "pokemon", sort: "new" });
+    expect(r.pruned).toBe(25);
+    expect(store.size("fixture")).toBe(475);
+  });
 });

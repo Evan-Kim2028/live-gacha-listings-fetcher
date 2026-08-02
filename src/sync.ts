@@ -186,18 +186,43 @@ export async function syncOnce(
 
     // Incomplete / partial-walk safety: never full-replace+prune when
     // (a) origin still has more pages, or
-    // (b) this page is a small fraction of the prior scope (truncated warm walk /
-    //     mid-rate-limit hasMore=false) — that would look like a mass sale.
+    // (b) unique page size is a small fraction of the prior scope (truncated warm
+    //     walk / mid-rate-limit hasMore=false), or
+    // (c) a large fraction of the prior scope is missing from this page
+    //     (unstable concurrent pagination — e.g. Phygitals offset thrash —
+    //     would look like a mass sale then re-list next tick).
     // Soft-fail empty is handled above (no prune).
     const priorScopeSize = scopeIds.size;
-    const pageSize = page.listings.length;
+    const pageIdSet = new Set(page.listings.map((l) => l.id));
+    const uniquePageSize = pageIdSet.size;
     const suspiciouslySmall =
       scopeNonEmpty &&
       priorScopeSize >= 200 &&
-      pageSize > 0 &&
-      pageSize < Math.floor(priorScopeSize * 0.5);
+      uniquePageSize > 0 &&
+      uniquePageSize < Math.floor(priorScopeSize * 0.5);
+    let missingFromPage = 0;
+    if (scopeNonEmpty && priorScopeSize >= 200 && uniquePageSize > 0) {
+      for (const id of scopeIds) {
+        if (!pageIdSet.has(id)) missingFromPage += 1;
+      }
+    }
+    // Mass-drop / thrash guard: not real market churn for Solana TCG in one
+    // ~30–60s poll when either (a) >10% of a large prior scope is missing, or
+    // (b) more than 200 ids vanish at once (Phygitals concurrent offset walks
+    // often drop ~500–800 one tick then re-list the next). Upsert-only, no prune.
+    const massDropRatio =
+      priorScopeSize >= 200 &&
+      uniquePageSize > 0 &&
+      missingFromPage > Math.floor(priorScopeSize * 0.1);
+    const massDropAbs =
+      priorScopeSize >= 500 &&
+      uniquePageSize > 0 &&
+      missingFromPage > 200;
+    const massDrop =
+      scopeNonEmpty && (massDropRatio || massDropAbs);
     const incompletePage =
-      scopeNonEmpty && (page.hasMore === true || suspiciouslySmall);
+      scopeNonEmpty &&
+      (page.hasMore === true || suspiciouslySmall || massDrop);
     if (incompletePage) {
       let upserted = 0;
       let unchanged = 0;

@@ -497,8 +497,14 @@ async function main(): Promise<void> {
         );
       }
       bookLogCount += captureAllBooks(capture, orderbook);
-      // Periodic disk book snapshot of current memory store
-      if (bootstrap && radar.store.size() > 0 && ticks % 10 === 0) {
+      // Persist book often enough for live ops: every 3 syncs, and immediately
+      // after any prune so sold/delist removals hit disk without long lag.
+      const prunedN = result.pruned ?? result.prunedIds?.length ?? 0;
+      if (
+        bootstrap &&
+        radar.store.size() > 0 &&
+        (ticks % 3 === 0 || prunedN > 0)
+      ) {
         saveBook({
           store: radar.store,
           filter,
