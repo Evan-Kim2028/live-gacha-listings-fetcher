@@ -7,7 +7,8 @@ Primary code: `syncOnce` / `syncIncremental` (`src/sync.ts`), `ListingStore` (`s
 ## Operator get-started (copy-paste)
 
 ```bash
-# Full seed + warm updates + disk capture (recommended)
+# Full seed + warm updates + lean run capture (recommended)
+# Lean (default with --bootstrap): health.jsonl + sold.jsonl only; durable book under --book-out
 npx tsx examples/runtime-monitor.ts \
   --bootstrap \
   --seconds 21600 \
@@ -20,6 +21,9 @@ npx tsx examples/runtime-monitor.ts \
 
 # Resume warm only if book snapshot still fresh
 npx tsx examples/runtime-monitor.ts --bootstrap --resume --seconds 3600
+
+# Rich capture (events + books + run snapshots — high disk/RAM)
+npx tsx examples/runtime-monitor.ts --bootstrap --full-capture --seconds 3600
 ```
 
 Also documented in root `README.md` (Quick start: full book seed).
@@ -59,23 +63,23 @@ Name the disk directory from the same idea: a hash or sanitized form of `provide
 Multi-page cold pulls run page 1 first, then remaining pages concurrently:
 
 1. **Page 1 sequential** discovers `totalPages` / `hasMore` / totals
-2. **Remaining pages concurrent** with adaptive concurrency (default start **8**, min **2**, max **16**)
+2. **Remaining pages concurrent** with adaptive concurrency (default start **6**, min **2**, max **12**)
 3. **Throttle** on 429/5xx: cut concurrency in half, exponential backoff, retry page
 4. **Success streak** slowly ramps concurrency back up
 
-Implementation: `src/http/pageConcurrency.ts` (`paginateConcurrent` / `mapLimitAdaptive`), wired into CC / ME / Phygitals `pullPages`.
+Implementation: `src/http/pageConcurrency.ts` (`paginateConcurrent` / `mapLimitAdaptive`), wired into CC / ME / Phygitals `pullPages`. Defaults are capped to bound peak RAM during multi-page cold pulls.
 
 Tune per provider: `pageConcurrency: { start, min, max }` on provider options. Force sequential: `{ start: 1, max: 1 }`.
 
-**Measured live (Solana pokemon full cold, ~21k rows):**
+**Measured live (Solana pokemon full cold, ~21k rows; earlier concurrent defaults 8→16):**
 
 | Mode | Wall | Notes |
 |------|-----:|-------|
 | Sequential (`pageConcurrency` 1) | **~74s** | peakConc 1 all origins |
-| Concurrent (default 8→16) | **~32s** | same process after seq (CDN may help) |
+| Concurrent (then-default 8→16) | **~32s** | same process after seq (CDN may help) |
 | Concurrent alone (fresh process) | **~28s** | earlier bench |
 
-Speedup **~2.3×**, same row counts (Δ0). CC walk **~74s → ~6s** (peak 16). Throttles 0.
+Speedup **~2.3×**, same row counts (Δ0). CC walk **~74s → ~6s** at peak 16. Current library default max is **12** (slightly lower peak RAM).
 
 ```bash
 npx tsx examples/bench-cold-compare.ts    # seq then concurrent
@@ -198,7 +202,7 @@ Also:
 
 After a large cold book, warm soft-fails leave **thousands of rows** in memory and on disk until a **successful non-empty** pull proves the book shrank. Do not treat soft-fail empty as “market went to zero.”
 
-Related capture: `RunCapture` / `ListingChangeLog` emit `soft_fail` and skip listing diff when soft-fail is set.
+Related capture: `RunCapture` lean mode writes **health + sold only**; full mode emits listing diffs (`new` / `reprice` / `closed` / `soft_fail`). Soft-fail always skips store prune. Store rows are `trimListing`-ed (no `raw` / `searchBlob`). See `docs/RUNTIME_PROOF.md`.
 
 ## Disk layout
 

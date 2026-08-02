@@ -17,7 +17,29 @@ Capture **listings + orderbook** over hours/days with:
 
 Operators (or a small driver script) wire `PollEngine` + optional `OrderbookFeed` and write under `data/runs/<iso>/`.
 
+## Capture modes (`RunCapture`)
+
+| Mode | How to enable | Disk under `data/runs/<id>/` | RAM |
+|------|---------------|------------------------------|-----|
+| **lean** (default with `runtime-monitor --bootstrap`) | `RunCapture.open(dir, { lean: true })` or `--lean` | `meta.json`, `health.jsonl`, `sold.jsonl` only | No listing-diff map / no run-snapshot pages |
+| **full** | `{ mode: "full" }` or `--full-capture` | + `events.jsonl`, `books.jsonl`, `snapshots/` | Keeps last page per scope for sparse run snapshots |
+
+Durable inventory still lives in **`data/books/`** via `saveBook` / `loadBook` in both modes. Lean is the recommended long-soak path; full is for row-level event proof and run-local recovery dumps.
+
+In-memory store rows are always **trimmed** (`trimListing`): no `raw` / `searchBlob`, slim `canonical` — see `src/store.ts`.
+
 ## Run directory layout
+
+### Lean (recommended ops)
+
+```
+data/runs/<iso>/
+  meta.json           # includes "mode": "lean"
+  health.jsonl        # per-provider pull health
+  sold.jsonl          # delist / ask-removed last TOB
+```
+
+### Full (rich audit)
 
 ```
 data/runs/<iso>/
@@ -25,8 +47,9 @@ data/runs/<iso>/
   events.jsonl        # listing change / soft-fail events only
   books.jsonl         # best bid/ask per instrument when fingerprint changes
   health.jsonl        # per-provider pull health every tick that ran a pull
-  snapshots/          # sparse full dumps (JSON or .json.gz)
-    <provider>__<qsigHash>__<iso>.json[.gz]
+  sold.jsonl          # delist / ask-removed last TOB
+  snapshots/          # sparse full dumps (JSON)
+    <provider>__<qsigHash>__<iso>.json
 ```
 
 `<iso>` = run start time in UTC ISO-8601 safe for paths, e.g. `2026-08-01T14-30-00Z`.
@@ -36,6 +59,7 @@ data/runs/<iso>/
 ```json
 {
   "startedAt": "2026-08-01T14:30:00.000Z",
+  "mode": "lean",
   "filter": { "tcg": "pokemon", "limit": 100 },
   "providers": ["collectorcrypt", "magiceden", "phygitals"],
   "minIntervalMs": { "collectorcrypt": 30000, "magiceden": 20000 },
@@ -43,11 +67,13 @@ data/runs/<iso>/
   "parallel": true,
   "checkpointMs": 300000,
   "orderbook": true,
-  "libNote": "PollEngine + ListingStore + OrderbookFeed native"
+  "libNote": "RunCapture lean: health + sold only"
 }
 ```
 
-## 1. `events.jsonl`: append-only, **only on change**
+## 1. `events.jsonl`: append-only, **only on change** (full mode)
+
+**Lean mode does not write this file** — use `health.jsonl` + `sold.jsonl` + durable `data/books/`.
 
 **Never** dump every active listing every tick. Emit one JSON line when something material happens.
 
@@ -104,9 +130,11 @@ Soft-fail: `MultiSourceRadar.syncAll` / `PollEngine.syncNow` use `Promise.allSet
 {"ts":"2026-08-01T14:33:00.050Z","kind":"soft_fail","provider":"phygitals","error":"soft-fail HTTP 500","lastSuccessfulPullAt":"2026-08-01T14:20:00.000Z","lastRowCount":42}
 ```
 
-## 2. `snapshots/`: sparse full checkpoints
+## 2. `snapshots/`: sparse full checkpoints (full mode only)
 
-Full dumps are recovery and audit anchors, not the live stream.
+**Lean mode never creates `snapshots/`.** Durable recovery is `data/books/` (`saveBook`).
+
+Full dumps are recovery and audit anchors for rich capture, not the live stream.
 
 ### When to write
 
@@ -143,7 +171,9 @@ Body:
 
 Cross-check: after a checkpoint, replaying `events.jsonl` from the previous snapshot’s `ts` should converge to the next snapshot’s id-set and prices (within soft-fail gaps).
 
-## 3. `books.jsonl`: best bid/ask only when fingerprint changes
+## 3. `books.jsonl`: best bid/ask only when fingerprint changes (full mode)
+
+**Lean mode does not write this file.**
 
 `OrderbookFeed` (native) derives **asks** from filtered `ListingStore` (`refreshAsks` after radar/poll) and **bids** from `BidsProvider`. `OrderbookStore.book(instrumentKey)` already exposes `bestBid` / `bestAsk` / `spread` / `mid`.
 

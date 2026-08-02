@@ -14,6 +14,8 @@ export type {
   BookChangeInput,
   SoldRecord,
   OnSyncExtra,
+  RunCaptureMode,
   RunCaptureOptions,
   SnapshotFileBody,
 } from "./types.js";
+export type { ListingChangeLogOptions } from "./ListingChangeLog.js";

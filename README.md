@@ -18,19 +18,21 @@ npm test
 
 # Full seed (paginate until !hasMore, max 500 pages/origin) + warm 6h
 # No --limit = take everything the API returns (safety: --max-pages)
-# Writes: data/books/… + data/runs/live-…/{events,books,sold,health,snapshots}
+# Lean capture by default with --bootstrap: data/runs/…/{health,sold}.jsonl + durable book
 npx tsx examples/runtime-monitor.ts \
   --bootstrap \
   --seconds 21600 \
   --interval-ms 20000 \
   --max-pages 500 \
   --bids-every 3 \
-  --checkpoint-ms 300000 \
   --book-out data/books/full-solana-pokemon \
   --out data/runs/live-full
 
 # Resume warm if the book snapshot is still fresh (--max-age-ms, default 15m)
 npx tsx examples/runtime-monitor.ts --bootstrap --resume --seconds 3600 --out data/runs/live-full-2
+
+# Rich run capture (events + books + run snapshots — heavy disk/RAM)
+npx tsx examples/runtime-monitor.ts --bootstrap --full-capture --seconds 3600
 
 # CLI-only cold book (no capture loop)
 npx tsx src/cli.ts bootstrap --solana --tcg pokemon --max-pages 50 --limit 10000
@@ -40,9 +42,11 @@ npx tsx src/cli.ts bootstrap --solana --resume --poll --seconds 60
 | Flag / path | Behavior |
 |-------------|----------|
 | `--bootstrap` / `--full` | Full seed: no limit by default, `maxPages` default **500**, walks until `!hasMore` |
+| `--lean` / lean default on bootstrap | Run capture: **health + sold only** (recommended for long soaks) |
+| `--full-capture` | Rich capture: events + books + run `snapshots/` |
 | Without `--bootstrap` | Window radar (`limit` default 15). Smoke only, not the full book |
-| `data/books/` | Resume cache of the current full listing book |
-| `data/runs/<id>/` | Live deltas: `events.jsonl`, `books.jsonl`, `sold.jsonl`, `health.jsonl`, `snapshots/` |
+| `data/books/` | Durable listing book (resume cache; always kept) |
+| `data/runs/<id>/` | Lean: `health.jsonl`, `sold.jsonl`. Full: + `events.jsonl`, `books.jsonl`, `snapshots/` |
 
 Docs: [`docs/BOOTSTRAP_FULL_BOOK.md`](docs/BOOTSTRAP_FULL_BOOK.md) · [`docs/SOLD_TAKEDOWN.md`](docs/SOLD_TAKEDOWN.md) · [`docs/RUNTIME_PROOF.md`](docs/RUNTIME_PROOF.md) · [`docs/NATIVE_SOURCES.md`](docs/NATIVE_SOURCES.md) · [`docs/DEEP_LINKS.md`](docs/DEEP_LINKS.md)
 

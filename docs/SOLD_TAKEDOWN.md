@@ -145,11 +145,13 @@ PollEngine tick (createSolanaProviders — no Beezie unless includeBeezie)
       → DelistEvent(reason=missing_from_full_snapshot, source=poll_diff)
       → clear ask / residual bids; RunCapture.onSold(reason=delisted_or_sold|ask_removed)
       → onDelist log lines
-  → RunCapture listing diffs (new / reprice / closed / soft_fail)
+  → RunCapture listing diffs (full mode only: new / reprice / closed / soft_fail)
   → OrderbookFeed.refreshAsks() (reconcile residual sold)
-  → RunCapture.onSold → sold.jsonl (+ events.jsonl mirror)
+  → RunCapture.onSold → sold.jsonl (always; events.jsonl mirror only in full mode)
 ```
 
 Same delist apply runs on `MultiSourceRadar.syncAll` / `bootstrapAll` when `pruned > 0`.
+
+Lean capture (`--bootstrap` default on `runtime-monitor`, or `RunCapture.open(dir, { lean: true })`) keeps **sold.jsonl + health.jsonl** only — sufficient for sold audit without fat events/run-snapshots.
 
 See `examples/runtime-monitor.ts` (`--bootstrap` warm full re-walk so prune/sold is correct), `docs/BOOTSTRAP_FULL_BOOK.md`, `docs/TRADER_EXPERIENCE.md`, `docs/RUNTIME_PROOF.md`, `docs/NATIVE_SOURCES.md`.

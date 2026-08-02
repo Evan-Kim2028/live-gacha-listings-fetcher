@@ -297,4 +297,41 @@ describe("RunCapture", () => {
     expect(typeof mod.RunCapture.open).toBe("function");
     expect(typeof mod.ListingChangeLog).toBe("function");
   });
+
+  it("lean mode: health + sold only; no events/books/snapshots", () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-capture-lean-"));
+    const cap = RunCapture.open(dir, { lean: true, checkpointMs: 0 });
+    expect(cap.mode).toBe("lean");
+    expect(cap.lean).toBe(true);
+    expect(existsSync(join(dir, "health.jsonl"))).toBe(true);
+    expect(existsSync(join(dir, "sold.jsonl"))).toBe(true);
+    expect(existsSync(join(dir, "events.jsonl"))).toBe(false);
+    expect(existsSync(join(dir, "books.jsonl"))).toBe(false);
+    expect(existsSync(join(dir, "snapshots"))).toBe(false);
+
+    const l1 = makeListing("a", 5);
+    const events = cap.onSyncResult(syncResult([l1]));
+    expect(events).toEqual([]);
+    expect(cap.readHealth().length).toBeGreaterThanOrEqual(1);
+
+    const sold = cap.onSold({
+      instrumentKey: "k",
+      lastBestBid: null,
+      lastBestAsk: 5,
+      reason: "delisted_or_sold",
+      listingIds: [l1.id],
+    });
+    expect(sold.kind).toBe("sold");
+    expect(cap.onBookChange({ instrumentKey: "k", bestBid: 1, bestAsk: 2 })).toBeNull();
+    expect(cap.maybeCheckpoint("fixture", "q")).toBeNull();
+    cap.close();
+
+    const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as {
+      mode?: string;
+      endedAt?: string;
+    };
+    expect(meta.mode).toBe("lean");
+    expect(meta.endedAt).toBeTruthy();
+    expect(cap.readSold().some((s) => s.instrumentKey === "k")).toBe(true);
+  });
 });

@@ -15,6 +15,7 @@ import type {
   HealthRecord,
   ListingChangeEvent,
   OnSyncExtra,
+  RunCaptureMode,
   RunCaptureOptions,
   ScopeRef,
   SnapshotFileBody,
@@ -105,11 +106,13 @@ function normalizeBook(input: BookChangeInput): {
  * snapshots, top-of-book lines, health ticks.
  *
  * Layout (docs/RUNTIME_PROOF.md):
- *   meta.json, events.jsonl, books.jsonl, health.jsonl, snapshots/
+ *   full: meta.json, events.jsonl, books.jsonl, health.jsonl, sold.jsonl, snapshots/
+ *   lean: meta.json, health.jsonl, sold.jsonl only (no events/books/run-snapshots)
  */
 export class RunCapture {
   readonly runDir: string;
   readonly log: ListingChangeLog;
+  readonly mode: RunCaptureMode;
   private readonly checkpointMs: number;
   private readonly now: () => Date;
   private readonly healthOnShortCircuit: boolean;
@@ -121,32 +124,50 @@ export class RunCapture {
 
   private constructor(runDir: string, opts: RunCaptureOptions = {}) {
     this.runDir = runDir;
-    this.log = new ListingChangeLog();
+    this.mode =
+      opts.mode === "lean" || opts.lean === true ? "lean" : "full";
+    // Lean never retains full page copies for snapshots (saves dual-book RAM).
+    this.log = new ListingChangeLog({
+      retainScopeListings: this.mode === "full",
+    });
     this.checkpointMs = opts.checkpointMs ?? 300_000;
     this.now = opts.now ?? (() => new Date());
     this.healthOnShortCircuit = opts.healthOnShortCircuit ?? true;
     this.startedAt = this.now().toISOString();
   }
 
+  get lean(): boolean {
+    return this.mode === "lean";
+  }
+
   /** Create run directory, write meta.json, return ready capture handle. */
   static open(runDir: string, opts: RunCaptureOptions = {}): RunCapture {
     mkdirSync(runDir, { recursive: true });
-    mkdirSync(join(runDir, "snapshots"), { recursive: true });
     const cap = new RunCapture(runDir, opts);
+    if (cap.mode === "full") {
+      mkdirSync(join(runDir, "snapshots"), { recursive: true });
+    }
     const meta = {
       startedAt: cap.startedAt,
       checkpointMs: cap.checkpointMs,
-      libNote: "RunCapture + ListingChangeLog",
+      mode: cap.mode,
+      libNote:
+        cap.mode === "lean"
+          ? "RunCapture lean: health + sold only"
+          : "RunCapture + ListingChangeLog",
       ...(opts.meta ?? {}),
     };
     writeFileSync(join(runDir, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
-    // Ensure empty jsonl files exist for operators
-    for (const name of [
-      "events.jsonl",
-      "health.jsonl",
-      "books.jsonl",
-      "sold.jsonl",
-    ] as const) {
+    const files =
+      cap.mode === "lean"
+        ? (["health.jsonl", "sold.jsonl"] as const)
+        : ([
+            "events.jsonl",
+            "health.jsonl",
+            "books.jsonl",
+            "sold.jsonl",
+          ] as const);
+    for (const name of files) {
       const p = join(runDir, name);
       if (!existsSync(p)) writeFileSync(p, "");
     }
@@ -155,7 +176,7 @@ export class RunCapture {
 
   /**
    * Record instrument leaving the book (sold/delisted). Appends sold.jsonl
-   * and a closed-style events line when listingIds present.
+   * and (full mode only) a mirror line on events.jsonl.
    */
   onSold(rec: Omit<SoldRecord, "ts" | "kind"> & { ts?: string }): SoldRecord {
     this.assertOpen();
@@ -170,8 +191,9 @@ export class RunCapture {
       reason: rec.reason,
     };
     this.appendJsonl("sold.jsonl", full);
-    // Also mirror into events for unified tailing
-    this.appendJsonl("events.jsonl", full);
+    if (this.mode === "full") {
+      this.appendJsonl("events.jsonl", full);
+    }
     return full;
   }
 
@@ -189,7 +211,8 @@ export class RunCapture {
 
   /**
    * Process a SyncResult: health always (unless short-circuit health off),
-   * listing deltas only when not short-circuited; soft_fail skips diff.
+   * listing deltas only in full mode when not short-circuited; soft_fail skips diff.
+   * Lean: health only (sold goes through {@link onSold}).
    */
   onSyncResult(result: SyncResult, extra: OnSyncExtra = {}): ListingChangeEvent[] {
     this.assertOpen();
@@ -218,6 +241,11 @@ export class RunCapture {
       this.onHealth(health);
     }
 
+    // Lean: no events.jsonl, no listing-diff log, no run snapshots.
+    if (this.mode === "lean") {
+      return [];
+    }
+
     if (extra.softFail || extra.lastError) {
       const ev = this.log.softFail(result.provider, String(extra.lastError ?? "soft_fail"), {
         lastSuccessfulPullAt: wm?.lastSuccessfulPullAt ?? null,
@@ -244,6 +272,7 @@ export class RunCapture {
   /**
    * Diff listings against last known by id (price, listedAt, seller).
    * Writes deltas only to events.jsonl. Returns emitted events.
+   * No-op in lean mode.
    */
   onListingsDiff(
     listings: Listing[],
@@ -251,6 +280,7 @@ export class RunCapture {
     ts?: string,
   ): ListingChangeEvent[] {
     this.assertOpen();
+    if (this.mode === "lean") return [];
     const at = this.ts(ts);
     const events = this.log.onListingsDiff(listings, scope, at);
     for (const ev of events) {
@@ -261,9 +291,13 @@ export class RunCapture {
     return events;
   }
 
-  /** Append books.jsonl only when top-of-book fingerprint changes. */
+  /**
+   * Append books.jsonl only when top-of-book fingerprint changes.
+   * No-op in lean mode (durable book lives under book-out / saveBook).
+   */
   onBookChange(input: BookChangeInput, ts?: string): BookChangeRecord | null {
     this.assertOpen();
+    if (this.mode === "lean") return null;
     const at = this.ts(ts);
     const b = normalizeBook(input);
     const fp = bookFp(b);
@@ -312,6 +346,7 @@ export class RunCapture {
   /**
    * Write sparse snapshot JSON for a scope when dirty and either first
    * snapshot or checkpointMs elapsed since last write.
+   * No-op in lean mode.
    */
   maybeCheckpoint(
     provider: string,
@@ -319,6 +354,7 @@ export class RunCapture {
     ts?: string,
   ): string | null {
     this.assertOpen();
+    if (this.mode === "lean") return null;
     const at = this.ts(ts);
     const sk = scopeKey(provider, querySignature);
     const listings = this.log.listScope(provider, querySignature);
@@ -337,7 +373,7 @@ export class RunCapture {
     return this.writeSnapshot(provider, querySignature, listings, at);
   }
 
-  /** Force snapshot write for a scope (used on close). */
+  /** Force snapshot write for a scope (used on close). No-op path in lean mode. */
   writeSnapshot(
     provider: string,
     querySignature = "",
@@ -345,6 +381,7 @@ export class RunCapture {
     ts?: string,
   ): string {
     this.assertOpen();
+    if (this.mode === "lean") return "";
     const at = this.ts(ts);
     const rows = listings ?? this.log.listScope(provider, querySignature);
     const sk = scopeKey(provider, querySignature);
@@ -363,14 +400,17 @@ export class RunCapture {
     return file;
   }
 
-  /** Final dirty-scope snapshots + meta.endedAt. Idempotent after first close. */
+  /** Final dirty-scope snapshots (full mode) + meta.endedAt. Idempotent after first close. */
   close(): void {
     if (this.closed) return;
-    for (const sk of this.log.dirtyScopeKeys()) {
-      const { provider, querySignature } = ListingChangeLog.parseScopeKey(sk);
-      const listings = this.log.listScope(provider, querySignature);
-      if (listings.length === 0 && !this.log.isDirty(provider, querySignature)) continue;
-      this.writeSnapshot(provider, querySignature, listings);
+    if (this.mode === "full") {
+      for (const sk of this.log.dirtyScopeKeys()) {
+        const { provider, querySignature } = ListingChangeLog.parseScopeKey(sk);
+        const listings = this.log.listScope(provider, querySignature);
+        if (listings.length === 0 && !this.log.isDirty(provider, querySignature))
+          continue;
+        this.writeSnapshot(provider, querySignature, listings);
+      }
     }
     const metaPath = join(this.runDir, "meta.json");
     try {
@@ -401,6 +441,10 @@ export class RunCapture {
 
   readBooks(): BookChangeRecord[] {
     return readJsonl<BookChangeRecord>(join(this.runDir, "books.jsonl"));
+  }
+
+  readSold(): SoldRecord[] {
+    return readJsonl<SoldRecord>(join(this.runDir, "sold.jsonl"));
   }
 }
 

@@ -23,9 +23,18 @@ function fieldsEqual(a: ListingDeltaFields, b: ListingDeltaFields): boolean {
   );
 }
 
+export interface ListingChangeLogOptions {
+  /**
+   * When true (default), keep full last page per scope for run snapshots.
+   * Set false in lean capture to avoid a second full book in RAM.
+   */
+  retainScopeListings?: boolean;
+}
+
 /**
  * In-memory last-known listing map + scope id-sets.
- * Diffs by id on price / listedAt / seller only — no full-row dumps.
+ * Diffs by id on price / listedAt / seller only — no full-row dumps unless
+ * {@link ListingChangeLogOptions.retainScopeListings} is enabled.
  */
 export class ListingChangeLog {
   /** id → last observed delta fields + provider */
@@ -35,10 +44,15 @@ export class ListingChangeLog {
   >();
   /** scopeKey → active ids for that provider+query */
   private readonly scopeIds = new Map<string, Set<string>>();
-  /** scopeKey → full last page (for sparse snapshots) */
+  /** scopeKey → full last page (for sparse snapshots); optional */
   private readonly scopeListings = new Map<string, Listing[]>();
   /** scopeKey → dirty since last checkpoint */
   private readonly dirtyScopes = new Set<string>();
+  private readonly retainScopeListings: boolean;
+
+  constructor(opts: ListingChangeLogOptions = {}) {
+    this.retainScopeListings = opts.retainScopeListings !== false;
+  }
 
   /** Last known fields for id, if any. */
   getKnown(id: string): (ListingDeltaFields & { provider: string }) | undefined {
@@ -141,7 +155,12 @@ export class ListingChangeLog {
     }
 
     this.scopeIds.set(sk, nextIds);
-    this.scopeListings.set(sk, listings.map((l) => ({ ...l })));
+    if (this.retainScopeListings) {
+      // Shallow copies only — store already trims raw/searchBlob at upsert.
+      this.scopeListings.set(sk, listings.map((l) => ({ ...l })));
+    } else {
+      this.scopeListings.delete(sk);
+    }
     if (events.length > 0) this.dirtyScopes.add(sk);
     // First successful page for a scope is also a snapshot candidate even with
     // zero events only if we never checkpointed — handled by RunCapture via

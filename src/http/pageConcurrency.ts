@@ -296,7 +296,7 @@ export async function paginateConcurrent<T>(
       1,
       Math.min(
         3,
-        opts.concurrency?.start ?? DEFAULT_PAGE_CONCURRENCY.start ?? 8,
+        opts.concurrency?.start ?? DEFAULT_PAGE_CONCURRENCY.start ?? 6,
       ),
     );
     let next = 1;
@@ -359,9 +359,10 @@ export async function paginateConcurrent<T>(
 }
 
 /** Default concurrency for cold bootstrap page walks. */
+/** Adaptive page fan-out — capped to bound peak RAM during multi-page pulls. */
 export const DEFAULT_PAGE_CONCURRENCY: AdaptiveConcurrencyOptions = {
-  start: 8,
+  start: 6,
   min: 2,
-  max: 16,
+  max: 12,
   successesBeforeBump: 3,
 };

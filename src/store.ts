@@ -1,7 +1,12 @@
 import { listingId } from "./identity.js";
 import { withLastSeenAt } from "./listingAge.js";
 import { scopeKey } from "./querySignature.js";
-import type { Listing, ProviderWatermark, SnapshotMeta } from "./types.js";
+import type {
+  CanonicalCard,
+  Listing,
+  ProviderWatermark,
+  SnapshotMeta,
+} from "./types.js";
 
 export interface UpsertStats {
   upserted: number;
@@ -10,6 +15,59 @@ export interface UpsertStats {
   /** Listing ids actually deleted from the store this apply (left all scopes). */
   prunedIds: string[];
   total: number;
+}
+
+/**
+ * Drop heavy / debug-only fields before keeping a row in {@link ListingStore}.
+ * Strips `raw` and `searchBlob`, and slims `canonical` to identity display keys.
+ * Trading fields (id, price, urls, grades, …) are preserved.
+ */
+export function trimListing(listing: Listing): Listing {
+  let canonical: CanonicalCard | null = listing.canonical ?? null;
+  if (canonical != null && typeof canonical === "object") {
+    const slim: CanonicalCard = {};
+    if (canonical.name != null) slim.name = canonical.name;
+    if (canonical.number != null) slim.number = canonical.number;
+    if (canonical.scrydex_id != null) slim.scrydex_id = canonical.scrydex_id;
+    if (canonical.image != null) slim.image = canonical.image;
+    canonical = Object.keys(slim).length > 0 ? slim : null;
+  }
+  // Explicit field copy so `raw` / `searchBlob` / extra canonical keys never stick.
+  const out: Listing = {
+    id: listing.id,
+    provider: listing.provider,
+    platform: listing.platform,
+    nativeId: listing.nativeId,
+    tokenId: listing.tokenId,
+    name: listing.name,
+    price: listing.price,
+    currency: listing.currency,
+    fmv: listing.fmv,
+    delta: listing.delta,
+    market: listing.market,
+    seller: listing.seller,
+    externalUrl: listing.externalUrl,
+    imageUrl: listing.imageUrl,
+    listedAt: listing.listedAt,
+    firstListedAt: listing.firstListedAt,
+    lastEvent: listing.lastEvent,
+    tcg: listing.tcg,
+    itemType: listing.itemType,
+    grader: listing.grader,
+    grade: listing.grade,
+    gradeNum: listing.gradeNum,
+    language: listing.language,
+    setRaw: listing.setRaw,
+    cardNumber: listing.cardNumber,
+    year: listing.year,
+    confidence: listing.confidence,
+    canonical,
+    contractAddress: listing.contractAddress,
+  };
+  if (listing.lastSeenAt !== undefined) {
+    out.lastSeenAt = listing.lastSeenAt;
+  }
+  return out;
 }
 
 /**
@@ -166,7 +224,7 @@ export class ListingStore {
       // Prefer existing lastSeenAt only when caller already set it; else fetchedAt.
       // Always write apply-time lastSeenAt so re-observe refreshes age.
       const listing = {
-        ...withLastSeenAt(raw, at),
+        ...withLastSeenAt(trimListing(raw), at),
         lastSeenAt: at,
       };
       const prev = this.byId.get(listing.id);
@@ -207,7 +265,7 @@ export class ListingStore {
           `listing provider ${raw.provider} != snapshot provider ${provider}`,
         );
       }
-      const listing = withLastSeenAt(raw, at);
+      const listing = withLastSeenAt(trimListing(raw), at);
       nextScope.add(listing.id);
       const prev = this.byId.get(listing.id);
       if (prev && listingsEqual(prev, listing)) {
@@ -291,7 +349,10 @@ export class ListingStore {
   ): { changed: boolean } {
     if (!listing.id) throw new Error("Listing missing id");
     const at = seenAt ?? new Date().toISOString();
-    const row = { ...withLastSeenAt(listing, at), lastSeenAt: at };
+    const row = {
+      ...withLastSeenAt(trimListing(listing), at),
+      lastSeenAt: at,
+    };
     const prev = this.byId.get(listing.id);
     const changed = !(prev && listingsEqual(prev, row));
     this.byId.set(listing.id, row);

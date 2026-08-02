@@ -6,6 +6,19 @@ Primary code: `MultiSourceRadar`, `ListingStore`, `syncOnce`, `PollEngine`.
 
 ---
 
+## 0. Lean capture + trimmed rows (ops path)
+
+| Lever | What it does |
+|-------|----------------|
+| **`RunCapture` lean** | `health.jsonl` + `sold.jsonl` only; no events/books/run-snapshots dual-book in RAM. Default on `runtime-monitor --bootstrap`. |
+| **`trimListing`** | On every store upsert: drop `raw` / `searchBlob`, slim `canonical`. |
+| **Page concurrency** | Adaptive pull pages default **start 6 / max 12** (`DEFAULT_PAGE_CONCURRENCY`) to cap peak RAM. |
+| **Durable book** | `saveBook` / `loadBook` under `data/books/` — not the fat run snapshot tree. |
+
+Details: `docs/RUNTIME_PROOF.md` (capture modes), `docs/BOOTSTRAP_FULL_BOOK.md`.
+
+---
+
 ## 1. Batch full-book rebuild vs incremental merge
 
 Two store update modes serve different cadences.

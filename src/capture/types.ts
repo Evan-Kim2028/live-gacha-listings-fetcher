@@ -119,8 +119,15 @@ export interface OnSyncExtra {
   ts?: string;
 }
 
+/**
+ * Capture verbosity for run directories.
+ * - `full` (default): events + books + health + sold + sparse run snapshots
+ * - `lean`: health + sold only (no events/books/run-snapshots; durable book is separate)
+ */
+export type RunCaptureMode = "full" | "lean";
+
 export interface RunCaptureOptions {
-  /** Wall-clock ms between sparse scope snapshots (default 300_000). */
+  /** Wall-clock ms between sparse scope snapshots (default 300_000). Ignored in lean mode. */
   checkpointMs?: number;
   /** Written once to meta.json at open. */
   meta?: Record<string, unknown>;
@@ -131,6 +138,13 @@ export interface RunCaptureOptions {
    * Listing diffs still require an explicit onListingsDiff or non-short-circuit result.
    */
   healthOnShortCircuit?: boolean;
+  /**
+   * Capture mode. Lean keeps only health.jsonl + sold.jsonl (+ meta) for long soaks.
+   * Default `full` for backward-compatible tests / rich capture.
+   */
+  mode?: RunCaptureMode;
+  /** Alias for `mode: "lean"`. */
+  lean?: boolean;
 }
 
 export interface SnapshotFileBody {

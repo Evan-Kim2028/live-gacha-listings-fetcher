@@ -29,7 +29,7 @@ export {
   formatOpenCommand,
 } from "./externalUrl.js";
 
-export { ListingStore, type UpsertStats } from "./store.js";
+export { ListingStore, trimListing, type UpsertStats } from "./store.js";
 export {
   withLastSeenAt,
   listingAgeMs,
@@ -319,8 +319,11 @@ export {
   type BookChangeRecord,
   type BookChangeInput,
   type OnSyncExtra,
+  type SoldRecord,
+  type RunCaptureMode,
   type RunCaptureOptions,
   type SnapshotFileBody,
+  type ListingChangeLogOptions,
 } from "./capture/index.js";
 
 export {

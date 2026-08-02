@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { listingId } from "../src/identity.js";
-import { ListingStore } from "../src/store.js";
+import { ListingStore, trimListing } from "../src/store.js";
 import { syncOnce } from "../src/sync.js";
 import { createTradedGgProvider } from "../src/providers/tradedgg.js";
 import { createFixtureProvider } from "../src/providers/fixture.js";
@@ -700,5 +700,37 @@ describe("mass-prune guard (partial warm walk)", () => {
     const r = await syncOnce(store, pSmall, { tcg: "pokemon", sort: "new" });
     expect(r.pruned).toBe(25);
     expect(store.size("fixture")).toBe(475);
+  });
+
+  it("trimListing strips raw/searchBlob and store upsert drops them", () => {
+    const fat = makeListing("courtyard", "fat", 12);
+    fat.raw = { huge: "x".repeat(1000), nested: { a: 1 } };
+    fat.searchBlob = "blob ".repeat(200);
+    fat.canonical = {
+      name: "Pikachu",
+      number: "25",
+      scrydex_id: "x",
+      image: "https://img",
+      extraHeavy: { z: 1 },
+    } as Listing["canonical"];
+
+    const slim = trimListing(fat);
+    expect(slim.raw).toBeUndefined();
+    expect(slim.searchBlob).toBeUndefined();
+    expect(slim.canonical).toEqual({
+      name: "Pikachu",
+      number: "25",
+      scrydex_id: "x",
+      image: "https://img",
+    });
+    expect((slim.canonical as { extraHeavy?: unknown })?.extraHeavy).toBeUndefined();
+
+    const store = new ListingStore();
+    store.upsertMany([fat]);
+    const got = store.get(fat.id)!;
+    expect(got.raw).toBeUndefined();
+    expect(got.searchBlob).toBeUndefined();
+    expect(got.price).toBe(12);
+    expect(got.name).toBe(fat.name);
   });
 });

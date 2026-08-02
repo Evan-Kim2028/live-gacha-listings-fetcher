@@ -1,18 +1,17 @@
 /**
  * Runtime monitor — PollEngine parallel + OrderbookFeed native + RunCapture.
  *
- * Captures under data/runs/<iso>/ with only real listing/book changes + soft-fails
- * (docs/RUNTIME_PROOF.md).
+ * Captures under data/runs/<iso>/ (docs/RUNTIME_PROOF.md).
  *
- * Full seed + warm (recommended get-started):
+ * Full seed + warm (recommended; lean capture by default with --bootstrap):
  *   npx tsx examples/runtime-monitor.ts --bootstrap --solana --seconds 21600
- *   # cold bootstrapAll (paginated) → data/books/ + data/runs/… snapshots
- *   # then warm poll updates memory + disk (events/books/sold/health)
+ *   # cold bootstrapAll → data/books/ + lean run dir (health + sold only)
+ *   # --full-capture for events/books/run-snapshots (heavy disk/RAM)
  *
  * Window / smoke:
  *   npx tsx examples/runtime-monitor.ts --offline --seconds 15
  *   npx tsx examples/runtime-monitor.ts --seconds 45 --limit 50
- *   npx tsx examples/runtime-monitor.ts --all --seconds 60 --interval-ms 20000
+ *   npx tsx examples/runtime-monitor.ts --lean --bootstrap --resume --seconds 3600
  *   npx tsx examples/runtime-monitor.ts --out data/runs/my-run --seconds 30
  */
 import { mkdirSync } from "node:fs";
@@ -131,6 +130,10 @@ function resolveRunDir(outFlag: string | undefined): string {
 /** Dedupe identical soft_fail event lines (health still written every pull). */
 const lastSoftFail = new Map<string, string>();
 
+/** Quiet console: log at most N event/book lines per process (lean=0 extra). */
+let verboseEventLogs = 0;
+const VERBOSE_EVENT_LOG_CAP = 40;
+
 function wireSync(
   capture: RunCapture,
   store: MultiSourceRadar["store"],
@@ -175,15 +178,20 @@ function wireSync(
     lastError: isSoftEmpty ? soft : null,
     watermark: wm,
   });
+  if (capture.lean) return 0;
   let logged = 0;
   for (const ev of events) {
-    console.error(`[monitor] ${ev.kind} ${JSON.stringify(ev)}`);
+    if (verboseEventLogs < VERBOSE_EVENT_LOG_CAP) {
+      console.error(`[monitor] ${ev.kind} ${JSON.stringify(ev)}`);
+      verboseEventLogs += 1;
+    }
     logged += 1;
   }
   return logged;
 }
 
 function captureAllBooks(capture: RunCapture, orderbook: OrderbookFeed): number {
+  if (capture.lean) return 0;
   const book = orderbook.getOrderbookStore();
   let n = 0;
   for (const key of book.instrumentKeys()) {
@@ -198,9 +206,12 @@ function captureAllBooks(capture: RunCapture, orderbook: OrderbookFeed): number 
       currency: ccy,
     });
     if (rec) {
-      console.error(
-        `[monitor] book ${rec.instrumentKey} bid=${rec.bestBid} ask=${rec.bestAsk}`,
-      );
+      if (verboseEventLogs < VERBOSE_EVENT_LOG_CAP) {
+        console.error(
+          `[monitor] book ${rec.instrumentKey} bid=${rec.bestBid} ask=${rec.bestAsk}`,
+        );
+        verboseEventLogs += 1;
+      }
       n += 1;
     }
   }
@@ -218,6 +229,14 @@ async function main(): Promise<void> {
     args.includes("--full-seed");
   const resume = args.includes("--resume");
   const forceCold = args.includes("--force-cold");
+  /** Lean capture: health+sold only. Default on with --bootstrap; --full-capture overrides. */
+  const fullCapture = args.includes("--full-capture") || args.includes("--rich-capture");
+  const leanCapture =
+    !fullCapture &&
+    (args.includes("--lean") ||
+      args.includes("--lean-capture") ||
+      bootstrap);
+  const quiet = args.includes("--quiet") || leanCapture;
   const seconds = flagNum(args, "--seconds") ?? 15;
   // Window mode default 15; bootstrap omits limit (walk until !hasMore / maxPages).
   // Pass --limit only if you intentionally want a cap.
@@ -286,6 +305,7 @@ async function main(): Promise<void> {
 
   const capture = RunCapture.open(runDir, {
     checkpointMs,
+    lean: leanCapture,
     meta: {
       filter,
       providers: providerIds,
@@ -296,13 +316,18 @@ async function main(): Promise<void> {
       offline,
       sampleBudget,
       bootstrap,
+      lean: leanCapture,
       maxPages: maxPages ?? null,
       bookDir,
       skippedCold,
       loadReason: loadReason ?? null,
       libNote: bootstrap
-        ? "FULL seed bootstrapAll → warm PollEngine + RunCapture + sold.jsonl"
-        : "PollEngine + ListingStore + OrderbookFeed native + RunCapture",
+        ? leanCapture
+          ? "FULL seed → warm PollEngine; lean capture (health+sold) + durable book"
+          : "FULL seed bootstrapAll → warm PollEngine + full RunCapture + sold.jsonl"
+        : leanCapture
+          ? "PollEngine + lean capture (health+sold) + durable book"
+          : "PollEngine + ListingStore + OrderbookFeed native + RunCapture",
     },
   });
 
@@ -467,11 +492,13 @@ async function main(): Promise<void> {
     onDelist: (events: DelistEvent[], result: SyncResult) => {
       for (const d of events) {
         soldLogCount += 1;
-        console.error(
-          `[monitor] delist ${d.listingId} reason=${d.reason} source=${d.source}` +
-            ` provider=${result.provider} lastAsk=${d.lastBestAsk} lastBid=${d.lastBestBid}` +
-            (d.instrumentKey ? ` key=${d.instrumentKey}` : ""),
-        );
+        if (!quiet || soldLogCount <= 20) {
+          console.error(
+            `[monitor] delist ${d.listingId} reason=${d.reason} source=${d.source}` +
+              ` provider=${result.provider} lastAsk=${d.lastBestAsk} lastBid=${d.lastBestBid}` +
+              (d.instrumentKey ? ` key=${d.instrumentKey}` : ""),
+          );
+        }
       }
     },
     onSync: (id: string, result: SyncResult) => {
@@ -491,10 +518,12 @@ async function main(): Promise<void> {
           ts: s.at,
         });
         soldLogCount += 1;
-        console.error(
-          `[monitor] sold ${s.instrumentKey} reason=${s.reason}` +
-            ` lastAsk=${s.lastBestAsk} lastBid=${s.lastBestBid}`,
-        );
+        if (!quiet || soldLogCount <= 20) {
+          console.error(
+            `[monitor] sold ${s.instrumentKey} reason=${s.reason}` +
+              ` lastAsk=${s.lastBestAsk} lastBid=${s.lastBestBid}`,
+          );
+        }
       }
       bookLogCount += captureAllBooks(capture, orderbook);
       // Persist book often enough for live ops: every 3 syncs, and immediately
@@ -546,7 +575,10 @@ async function main(): Promise<void> {
         },
       );
       for (const ev of events) {
-        console.error(`[monitor] ${ev.kind} ${JSON.stringify(ev)}`);
+        if (!quiet && verboseEventLogs < VERBOSE_EVENT_LOG_CAP) {
+          console.error(`[monitor] ${ev.kind} ${JSON.stringify(ev)}`);
+          verboseEventLogs += 1;
+        }
         eventLogCount += 1;
       }
     },
@@ -643,18 +675,23 @@ async function main(): Promise<void> {
           })),
         },
         capture: {
+          mode: capture.mode,
+          lean: capture.lean,
           eventLines: events.length,
           healthLines: health.length,
           bookLines: books.length,
           softFails: events.filter((e) => e.kind === "soft_fail").length,
           loggedChanges: eventLogCount,
           loggedBooks: bookLogCount,
+          soldLines: soldLogCount,
         },
         note: offline
           ? "Offline fixtures + soft-fail isolation; RunCapture under data/runs"
-          : useAll
-            ? "PollEngine --all parallel + OrderbookFeed native bids budget + RunCapture"
-            : "PollEngine createSolanaProviders parallel + OrderbookFeed native bids budget + RunCapture",
+          : capture.lean
+            ? "PollEngine parallel + lean capture (health+sold) + durable book"
+            : useAll
+              ? "PollEngine --all parallel + OrderbookFeed native bids budget + RunCapture"
+              : "PollEngine createSolanaProviders parallel + OrderbookFeed native + full RunCapture",
       },
       null,
       2,
