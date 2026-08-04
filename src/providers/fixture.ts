@@ -5,7 +5,6 @@ import type { ListingsProvider, PullPage, PullQuery } from "./types.js";
 
 /**
  * Second source adapter: loads a local JSON array or { rows: [...] } file.
- * Proves the extension path without network or traded.gg coupling.
  *
  * Expected row shape (minimal):
  * { id?, platform, nativeId|instance_id, name, price, currency? }

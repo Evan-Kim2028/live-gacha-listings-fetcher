@@ -9,7 +9,6 @@
  *   npx tsx examples/bootstrap-book.ts --live --solana --max-pages 1 --limit 20
  *   npx tsx examples/bootstrap-book.ts --live --solana --resume --poll --seconds 20
  *
- * No traded.gg. FMV/delta only from origin fields (no external oracle).
  */
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,9 +160,8 @@ async function main(): Promise<void> {
     }
   }
 
-  const usedTradedGg = providerIds.includes("tradedgg");
   const totalActive = radar.store.size();
-  const ok = totalActive > 0 && !usedTradedGg;
+  const ok = totalActive > 0;
 
   console.log(
     JSON.stringify(
@@ -203,9 +201,7 @@ async function main(): Promise<void> {
             fmv: l.fmv,
             delta: l.delta,
           })),
-        usedTradedGg,
-        note:
-          "bootstrapAll → data/books; warm PollEngine same filter; FMV origin-only; no traded.gg",
+        note: "bootstrapAll → data/books; warm PollEngine same filter; FMV origin-only",
       },
       null,
       2,

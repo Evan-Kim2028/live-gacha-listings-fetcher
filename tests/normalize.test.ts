@@ -1,10 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  normalizeTradedRow,
-  type TradedRadarResponse,
-} from "../src/providers/tradedgg.js";
 import { normalizeCcCard, type CcCard } from "../src/providers/collectorcrypt.js";
 import { normalizeMeListing } from "../src/providers/magiceden.js";
 import {
@@ -36,30 +32,6 @@ const ccFixturePath = join(
   "fixtures",
   "collectorcrypt-sample.json",
 );
-
-describe("normalizeTradedRow against real fixture shape", () => {
-  it("maps every fixture row to stable id + decision fields", () => {
-    const body = JSON.parse(
-      readFileSync(fixturePath, "utf8"),
-    ) as TradedRadarResponse;
-    expect(body.rows?.length).toBeGreaterThan(0);
-
-    for (const row of body.rows!) {
-      const listing = normalizeTradedRow(row);
-      expect(listing.id).toBe(
-        listingId({
-          provider: "tradedgg",
-          platform: row.platform,
-          nativeId: row.instance_id,
-        }),
-      );
-      expect(listing.price).toBeGreaterThan(0);
-      expect(listing.platform).toBeTruthy();
-      expect(listing.nativeId).toBe(row.instance_id);
-      expect(listing.provider).toBe("tradedgg");
-    }
-  });
-});
 
 describe("externalUrl helpers + formatOpenCommand (deep-link only)", () => {
   it("builds CC / ME / Phygitals / Courtyard / Renaiss / DYLI public pages", () => {

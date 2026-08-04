@@ -32,9 +32,7 @@ These paths set `Listing.fmv` (and usually `delta`) in provider `normalize*` fro
 | **Courtyard** | `normalizeCourtyardAlgoliaHit` | `hit.estimatedValueUsd` | Fixture path may pass `row.fmv`. |
 | **DYLI** | `normalizeDyliRow` | *(none)* | Always `fmv: null` until a plugin. |
 
-### traded.gg — reference only
 
-`normalizeTradedRow` **passes through** `row.fmv` / `row.delta` when the aggregator already set them. traded.gg is **not** on the default native registry (`createDefaultProviders` / `createSolanaProviders`). It is an optional reference adapter for UX/field shape, not a required FMV source. Do not treat it as the production path for FMV.
 
 ## When plugins help
 
@@ -48,6 +46,6 @@ Use `applyFmvPlugins` only for rows origins left null (e.g. DYLI, ME listings wi
 | `FmvProvider` seam | `src/fmv/FmvProvider.ts` |
 | Delta helper | `src/fmv/delta.ts` |
 | Test fixture plugin | `src/fmv/FixtureFmvProvider.ts` |
-| CC / ME / longtail / traded normalize | `src/providers/collectorcrypt.ts`, `magiceden.ts`, `longtail.ts`, `tradedgg.ts`, `courtyard.ts` |
+| CC / ME / longtail normalize | `src/providers/collectorcrypt.ts`, `magiceden.ts`, `longtail.ts`, `courtyard.ts` |
 
 See also: `docs/BOOTSTRAP_FULL_BOOK.md` § FMV / delta, `docs/TRADER_EXPERIENCE.md` § FMV policy.

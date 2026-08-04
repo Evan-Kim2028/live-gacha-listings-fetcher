@@ -19,7 +19,6 @@ export interface BidsPullQuery {
 }
 
 /**
- * Modular bids source. traded.gg has no public unauthenticated bid book;
  * implement fixture / loan / external market adapters here.
  */
 export interface BidsProvider {

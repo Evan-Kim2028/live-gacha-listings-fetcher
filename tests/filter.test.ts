@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { listingMatchesFilter, filterListings } from "../src/filter.js";
 import { listingId } from "../src/identity.js";
 import type { Listing } from "../src/types.js";
-import { createTradedGgProvider } from "../src/providers/tradedgg.js";
 import { syncOnce } from "../src/sync.js";
 import { ListingStore } from "../src/store.js";
 import {
@@ -21,7 +20,7 @@ import { createFixtureProvider } from "../src/providers/fixture.js";
 import { OrderbookFeed } from "../src/orderbook/OrderbookFeed.js";
 
 function L(partial: Partial<Listing> & Pick<Listing, "platform" | "nativeId" | "price" | "name">): Listing {
-  const provider = partial.provider ?? "tradedgg";
+  const provider = partial.provider ?? "fixture";
   return {
     id: listingId({
       provider,
@@ -101,16 +100,18 @@ describe("listingMatchesFilter", () => {
 });
 
 describe("server+client filtered sync", () => {
-  it("fixture re-filter keeps only matching tcg", async () => {
+  it("fixture pull + client filter keeps only matching tcg", async () => {
     const store = new ListingStore();
-    const provider = createTradedGgProvider();
     const fixturePath = join(__dirname, "..", "fixtures", "radar-sample.json");
+    const provider = createFixtureProvider({
+      path: fixturePath,
+      providerId: "fixture",
+    });
     await syncOnce(store, provider, {
-      fixturePath,
-      tcg: "pokemon",
       shortCircuitOnBuiltAt: false,
     });
-    const rows = store.list();
+    expect(store.size()).toBeGreaterThan(0);
+    const rows = filterListings(store.list(), { tcg: "pokemon" });
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => !r.tcg || r.tcg === "pokemon")).toBe(true);
   });

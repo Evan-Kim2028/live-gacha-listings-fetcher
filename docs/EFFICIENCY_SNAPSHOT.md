@@ -1,6 +1,5 @@
 # Efficiency snapshot (native multi-source path)
 
-How this library keeps a multi-venue listing book fresh, scoped, and cheap without treating traded.gg as the system of record.
 
 Primary code: `MultiSourceRadar`, `ListingStore`, `syncOnce`, `PollEngine`.
 
@@ -38,16 +37,9 @@ Path: provider `pull` / `pullAll` → `syncOnce` → `ListingStore.replaceScopeS
 
 This is a scoped full replace: correct for sold/stale inventory without wiping other providers or filter views. Soft-fail empty pages (e.g. Phygitals 5xx + `lastError`) skip replace so a bad origin does not empty a good prior snapshot. `MultiSourceRadar.syncAll` uses `Promise.allSettled` so one hard throw never clears another provider’s scope.
 
-### Incremental merge (stream / deltas)
+### Incremental merge (optional deltas)
 
-Path: traded.gg SSE (optional reference) → `applyTradedDelta` → `upsertOne` / `removeOne`.
-
-| Event | Store effect |
-|-------|----------------|
-| `new` / `reprice` | `upsertOne` into a dedicated stream scope with no full-scope prune |
-| `closed` | Hard `removeOne` (immediate tombstone; beats radar lag on sold rows) |
-
-Incremental merge is low-latency when a true event stream exists. The default product path does not require it: native origins are polled and rebuilt per scope.
+When a stream exists, hosts can call `upsertOne` / `removeOne` without a full-scope prune. The default product path does not need that: native origins are polled and rebuilt per scope via `replaceScopeSnapshot`.
 
 ### Short-circuit on rebuild
 
@@ -76,7 +68,6 @@ Native adapters (`collectorcrypt`, `magiceden`, long-tail) set `builtAt` to the 
 
 ### Problem (historical)
 
-traded.gg returns a stable server `builtAt`. Native adapters used to stamp fetch-time ISO on every pull, so generation short-circuit almost never fired and PollEngine rewrote the store on every tick even when inventory was unchanged.
 
 ### Design (A preferred · B always for natives · C safety net)
 
@@ -134,9 +125,9 @@ normalize → listings[]
 
 ---
 
-## 2. Why local `MultiSourceRadar` stays faster than traded.gg
 
-traded.gg radar is a single aggregator hop: origins are scraped/re-indexed server-side, then served as one `/api/radar` snapshot (plus optional SSE). Client latency includes their re-scrape cadence and hop.
+
+## 2. MultiSourceRadar vs single-hop aggregator
 
 `MultiSourceRadar` fans out direct origin pulls in parallel (`Promise.allSettled` over `syncOnce` per provider):
 
@@ -168,7 +159,6 @@ Freshness is tracked at page, provider-ops, and row levels.
 
 | Watermark | Level | Role in this library |
 |-----------|--------|----------------------|
-| **`builtAt`** | Page / snapshot generation | traded.gg: server stamp. Natives: usually the content fingerprint (`fp:…`) so generation short-circuit works without wall-clock. |
 | **`contentFingerprint`** | Page generation (B) | Stable hash of normalized id/price/listedAt; matching prior meta → short-circuit without rewrite. |
 | **`etag`** | Transport (A) | HTTP ETag when origin provides it; `syncOnce` injects prior value as `ifNoneMatch` for conditional GET / 304. |
 | **`lastSuccessfulPullAt`** | Provider ops | ISO time of last successful apply or short-circuit; not advanced on soft/hard fail. |
@@ -183,7 +173,6 @@ Also recorded: `fetchedAt` (local pull time), `total` / `universe`, `querySignat
 
 | Provider | Generation signal | Cadence constraint |
 |----------|-------------------|--------------------|
-| traded.gg | Response `builtAt` | Radar max-age ~15s; snapshot reconcile ~60s while SSE live |
 | collectorcrypt | ETag **(A)** + fingerprint **(B)**; (C) via PollEngine | CDN `s-maxage≈30` → PollEngine default `minIntervalMs` 30s |
 | magiceden | ETag soft + fingerprint **(B)** | Independent; live SOL/USD can change USD prices (and thus fingerprint) |
 | long-tail | Fingerprint **(B)**; ETag on GET when present | Soft-fail empties do not prune; phygitals multi-param soft empty |
@@ -198,9 +187,6 @@ Efficiency comes from never pulling or holding the full multi-venue universe unl
 
 | Factory | Set | Excludes |
 |---------|-----|----------|
-| `createDefaultProviders()` | collectorcrypt + magiceden (+ optional courtyard) | traded.gg always |
-| `createDefaultProviders({ all: true })` | CC + ME + Courtyard + Beezie + Renaiss + DYLI | traded.gg |
-| `createSolanaProviders()` | CC (Solana), ME `collector_crypt`, phygitals | Courtyard (Polygon), Beezie (EVM), Renaiss, DYLI, traded.gg |
 | `createSolanaProviders({ includeBeezie: true })` | + beezie between ME and Phygitals | same base exclusions |
 
 Beezie is EVM inventory (flagged `raw.chain`) and is not in the default Solana set; opt in with `includeBeezie` / `includeEvm`.
@@ -258,7 +244,6 @@ CLI `poll` logs only `onSync` rows with `upserted > 0` (noise reduction); no-op 
 
 ## 6. Measured bench (`npm run bench-snapshot`)
 
-Live wall-clock of `MultiSourceRadar.syncAll`. Default `createSolanaProviders()` is CC + ME `collector_crypt` + Phygitals (Beezie excluded). Table below is a prior 4-origin breadth run with `createSolanaProviders({ includeBeezie: true })`, filter `{ tcg: pokemon, limit: 15, sort: new }`. No traded.gg.
 
 | Metric | Value |
 |--------|------:|
@@ -285,9 +270,7 @@ Also covered: content-equality **(C)** when `shortCircuitOnBuiltAt: true` and fe
 
 Warm short-circuit skips store rewrite only. Generation match runs after the origin pull/normalize, so live `bench-snapshot` warm wall-clock stays network-bound (~cold) unless the origin returns **304**. Bench JSON emits per-provider `shortCircuited` / `upserted` on each phase so a stable book can be grepped for rewrite skips without a duration cliff. Live `syncAll` forces `shortCircuitOnBuiltAt: false` (one-shot); **(A)/(B)** still short-circuit.
 
-### vs traded.gg ~30–60s `builtAt` hop
 
-traded.gg clients often wait on the aggregator rebuild cycle: origins are scraped server-side, a new radar snapshot gets a fresh `builtAt`, and consumers either poll until that generation advances or ride SSE then still reconcile on ~15–60s cadences. End-to-end “book is fresh after origin change” is commonly on the order of tens of seconds (the ~30–60s hop).
 
 This library’s cold parallel fan-out completed in **~1.0s** wall time (warm second pull **~0.9s**) for a full Solana multi-source page set, roughly **30–60× faster** than waiting on that aggregator hop, because wall clock is **max(origin RTT)** plus local normalize rather than wait for middleman rebuild then download. Warm wall-clock matches cold when origins return 200 (pull still happens). Rewrite short-circuit is proven by `metrics.shortCircuited` / zero second `replaceScopeSnapshot`, not by a large warm duration drop.
 
@@ -319,4 +302,3 @@ PullQuery (tcg, limit, …) ──► querySignature ──► scope key
             (parallel due set or round-robin)
 ```
 
-For optional traded.gg SSE: bootstrap with full-book snapshot, then incremental `upsertOne` / `removeOne`, reconcile with periodic snapshot. Same store, different merge mode.

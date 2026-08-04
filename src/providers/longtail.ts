@@ -1,6 +1,5 @@
 /**
  * Long-tail marketplace providers: Beezie, Renaiss, DYLI, Phygitals.
- * Live endpoints from origin APIs (self-serve mirror — not traded.gg).
  *
  * Beezie chain: live owners/creators are EVM `0x` addresses (Seaport-style
  * SellOrder), not Solana. Provider stays registered for inventory; normalize

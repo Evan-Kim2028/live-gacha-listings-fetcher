@@ -4,7 +4,6 @@
  * Primary key is NOT array index. It is derived only from source fields:
  *   provider + platform + nativeId
  *
- * traded.gg: nativeId = instance_id (UUID-like per listing instance).
  * Other adapters: map their stable listing id into nativeId.
  */
 

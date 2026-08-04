@@ -6,7 +6,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ListingStore,
-  createTradedGgProvider,
+  createFixtureProvider,
   syncOnce,
   listingId,
 } from "../src/index.js";
@@ -16,10 +16,12 @@ const fixture = join(root, "fixtures", "radar-sample.json");
 
 async function main(): Promise<void> {
   const store = new ListingStore();
-  const provider = createTradedGgProvider();
+  const provider = createFixtureProvider({
+    path: fixture,
+    providerId: "fixture",
+  });
 
   const r1 = await syncOnce(store, provider, {
-    fixturePath: fixture,
     limit: 50,
     shortCircuitOnBuiltAt: false,
   });
@@ -44,7 +46,6 @@ async function main(): Promise<void> {
 
   // Idempotent second sync
   const r2 = await syncOnce(store, provider, {
-    fixturePath: fixture,
     limit: 50,
     shortCircuitOnBuiltAt: false,
   });
@@ -57,7 +58,6 @@ async function main(): Promise<void> {
 
   // Short-circuit path
   const r3 = await syncOnce(store, provider, {
-    fixturePath: fixture,
     limit: 50,
     shortCircuitOnBuiltAt: true,
   });

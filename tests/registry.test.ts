@@ -67,11 +67,10 @@ describe("provider registry modularity", () => {
     expect(ids).toContain("collectorcrypt");
     expect(ids).toContain("magiceden");
     expect(ids).toContain("fixture");
-    // traded.gg optional reference only
-    expect(ids).toContain("tradedgg");
+    expect(ids).toContain("phygitals");
   });
 
-  it("createDefaultProviders is native-only (CC + ME), never traded.gg", () => {
+  it("createDefaultProviders is native-only (CC + ME)", () => {
     expect([...DEFAULT_NATIVE_PROVIDER_IDS]).toEqual([
       "collectorcrypt",
       "magiceden",
@@ -81,7 +80,6 @@ describe("provider registry modularity", () => {
       "collectorcrypt",
       "magiceden",
     ]);
-    expect(providers.some((p) => p.id === "tradedgg")).toBe(false);
   });
 
   it("createDefaultProviders({ all: true }) is CC+ME+Courtyard+Beezie+Renaiss+DYLI", () => {
@@ -94,7 +92,6 @@ describe("provider registry modularity", () => {
       "renaiss",
       "dyli",
     ]);
-    expect(providers.some((p) => p.id === "tradedgg")).toBe(false);
   });
 
   it("createDefaultProviders({ all: true, magiceden: false }) omits ME", () => {
@@ -126,7 +123,6 @@ describe("provider registry modularity", () => {
     expect(providers.some((p) => p.id === "courtyard")).toBe(false);
     expect(providers.some((p) => p.id === "renaiss")).toBe(false);
     expect(providers.some((p) => p.id === "dyli")).toBe(false);
-    expect(providers.some((p) => p.id === "tradedgg")).toBe(false);
   });
 
   it("createSolanaProviders({ includeBeezie: true }) or includeEvm adds Beezie", () => {

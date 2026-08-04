@@ -17,11 +17,10 @@ export interface CanonicalCard {
 export interface Listing {
   /** Deterministic primary key: provider:platform:nativeId */
   id: string;
-  /** Source adapter id, e.g. "tradedgg" | "fixture" */
+  /** Source adapter id, e.g. "fixture" | "collectorcrypt" */
   provider: string;
   /** Marketplace slug inside the provider (courtyard, cc, …) */
   platform: string;
-  /** Provider-native listing id (instance_id on traded.gg) */
   nativeId: string;
   tokenId: string | null;
   name: string;

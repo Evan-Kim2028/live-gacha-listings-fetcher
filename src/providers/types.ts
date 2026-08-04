@@ -2,7 +2,6 @@ import type { Listing, SnapshotMeta } from "../types.js";
 import type { Watchlist } from "../watchlist.js";
 
 /**
- * Pull / filter options. traded.gg radar honors server-side params where noted;
  * extra fields support client-side subset filtering (SSE is unfiltered).
  */
 export interface PullQuery {
@@ -28,7 +27,6 @@ export interface PullQuery {
   priceMax?: number;
   yearMin?: number;
   yearMax?: number;
-  /** Client-only: min deal % under FMV (negative delta is better on traded.gg). */
   maxDelta?: number;
   /** Client-only: require fmv present. */
   requireFmv?: boolean;
@@ -79,7 +77,7 @@ export interface PullPage {
  * surface the message on ops paths.
  */
 export interface ListingsProvider {
-  /** Stable adapter id, e.g. "tradedgg". */
+  /** Stable adapter id, e.g. "collectorcrypt". */
   readonly id: string;
 
   /**

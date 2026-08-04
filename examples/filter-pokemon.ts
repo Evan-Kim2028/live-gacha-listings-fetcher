@@ -1,16 +1,24 @@
 /**
- * Filtered subset pull: Pokémon only.
+ * Filtered subset pull: Pokémon only (fixture offline).
  * npx tsx examples/filter-pokemon.ts
  */
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ListingStore,
-  createTradedGgProvider,
+  createFixtureProvider,
   syncOnce,
 } from "../src/index.js";
 
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
 async function main(): Promise<void> {
   const store = new ListingStore();
-  const result = await syncOnce(store, createTradedGgProvider(), {
+  const provider = createFixtureProvider({
+    path: join(root, "fixtures", "radar-sample.json"),
+    providerId: "fixture",
+  });
+  const result = await syncOnce(store, provider, {
     tcg: "pokemon",
     limit: 40,
     sort: "new",

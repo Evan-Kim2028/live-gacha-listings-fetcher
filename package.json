@@ -1,7 +1,7 @@
 {
   "name": "live-gacha-listings-fetcher",
   "version": "0.1.0",
-  "description": "Self-serve multi-source TCG listings radar: native marketplace pulls, scoped store, bootstrap + warm poll, orderbook (no traded.gg required).",
+  "description": "Self-serve multi-source TCG listings radar: native marketplace pulls, scoped store, bootstrap + warm poll, orderbook.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,6 @@
     "test:watch": "vitest",
     "sync": "tsx src/cli.ts sync",
     "consumer": "tsx examples/consumer.ts",
-    "stream:accuracy": "tsx examples/stream-accuracy.ts",
     "native-radar": "tsx examples/native-radar.ts",
     "solana-radar": "tsx examples/solana-radar.ts",
     "bench-snapshot": "tsx examples/bench-snapshot.ts",

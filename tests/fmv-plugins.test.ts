@@ -255,8 +255,7 @@ describe("MultiSourceRadar fmvPlugins wire", () => {
     expect(listed[0]!.delta).toBe(-10);
   });
 
-  it("does not import or require traded.gg for FMV", () => {
-    // Structural: MultiSourceRadar + FixtureFmvProvider only — no traded.gg
+  it("registers FixtureFmvProvider on radar", () => {
     const radar = new MultiSourceRadar({
       providers: [],
       fmvPlugins: [new FixtureFmvProvider({})],

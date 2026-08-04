@@ -27,7 +27,7 @@ const hint = formatOpenHint(listing); // string | null
 |------|----------|
 | 1 | Use `listing.externalUrl` if trimmed value matches `^https?://` |
 | 2 | Else construct from `platform` (then `provider`): cc/collectorcrypt → `ccListingUrl(tokenId ?? nativeId)`; me/magiceden → mint page; courtyard / phygitals / renaiss / dyli → documented public paths |
-| 3 | Else `null` (beezie, fixture, tradedgg, unknown without origin URL) |
+| 3 | Else `null` (beezie, fixture, unknown without origin URL) |
 
 **CLI:** `traded-listings radar … --urls` prints `id\topenUrl` lines after the radar JSON (deep-link only).
 
@@ -44,7 +44,6 @@ const hint = formatOpenHint(listing); // string | null
 | **beezie** (longtail) | `normalizeBeezieRow` → `originProvidedUrl(row)` only | No library construct from `id`/`tokenId` | **Only if origin supplies URL** | **Documented gap:** Beezie SPA has no stable public item path verified from dropItem ids (marketplace category pages only); leave `null` when origin omits URL fields |
 | **longtail generic** | `normalizeLongtailRow` fallback → `originProvidedUrl(row)` | Same field scan as above | **Only if origin supplies URL** | unknown catalog; no invented paths |
 | **fixture** | `normalizeFixtureRow` → `row.external_url ?? null` | Whatever the fixture JSON puts in `external_url` | **Pass-through only** | fixtures must include URL if tests/UI need one |
-| **tradedgg** (reference) | `normalizeTradedRow` → `row.external_url ?? null` | traded.gg radar field as returned by aggregator | **Pass-through only** | API omits `external_url`; no local reconstruct. Reference adapter only |
 
 ## `originProvidedUrl` field order
 
@@ -70,6 +69,6 @@ import { formatOpenCommand, listingOpenUrl, formatOpenHint } from "traded-listin
 
 | Constructed by lib (mint/token/slug/id) | Pass-through only (null without origin URL field) |
 |-----------------------------------------|-----------------------------------------------------|
-| collectorcrypt, magiceden, courtyard, phygitals, renaiss, dyli | **beezie**, fixture, tradedgg, longtail generic |
+| collectorcrypt, magiceden, courtyard, phygitals, renaiss, dyli | **beezie**, fixture, longtail generic |
 
 **Beezie null policy:** live dropItem rows expose numeric `id`/`tokenId`, but the public site only exposes category browse (`/marketplace/pokemon`, etc.). Probed item paths (`/item/{id}`, `/nft/{tokenId}`, …) 404. Until Beezie documents a stable item deep-link, `externalUrl` stays `null` unless the origin row includes an http(s) URL field.

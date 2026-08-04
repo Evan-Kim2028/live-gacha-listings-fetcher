@@ -58,15 +58,6 @@ export type {
 } from "./providers/types.js";
 
 export {
-  TradedGgProvider,
-  createTradedGgProvider,
-  normalizeTradedRow,
-  type TradedGgOptions,
-  type TradedRadarRow,
-  type TradedRadarResponse,
-} from "./providers/tradedgg.js";
-
-export {
   CollectorCryptProvider,
   CollectorCryptBidsProvider,
   createCollectorCryptProvider,
@@ -247,20 +238,6 @@ export {
   type DefaultProvidersOptions,
   type SolanaProvidersOptions,
 } from "./providers/registry.js";
-
-export {
-  ListingsFeed,
-  type ListingsFeedOptions,
-  applyTradedDelta,
-  streamScope,
-  STREAM_SCOPE,
-  SseParser,
-  type SseMessage,
-  type FeedEvent,
-  type FeedStats,
-  type FeedStatus,
-  type TradedStreamWire,
-} from "./stream/index.js";
 
 export { listingMatchesFilter, filterListings } from "./filter.js";
 

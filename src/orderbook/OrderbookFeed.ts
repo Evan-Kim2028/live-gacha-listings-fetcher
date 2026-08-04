@@ -1,15 +1,13 @@
 import { listingMatchesFilter } from "../filter.js";
 import type { PullQuery } from "../providers/types.js";
 import type { ListingStore } from "../store.js";
-import { ListingsFeed, type ListingsFeedOptions } from "../stream/ListingsFeed.js";
-import type { FeedEvent } from "../stream/types.js";
 import {
   isWatchlistEmpty,
   mergeWatchlists,
   type Watchlist,
 } from "../watchlist.js";
 import type { BidsProvider } from "./BidsProvider.js";
-import { listingsToAsks, listingToAsk } from "./fromListings.js";
+import { listingsToAsks } from "./fromListings.js";
 import { OrderbookStore } from "./OrderbookStore.js";
 import type { BidOrder, InstrumentSoldEvent, OrderbookEvent } from "./types.js";
 
@@ -23,36 +21,24 @@ export interface OrderbookFeedOptions {
    * Merged into listingFilter.watchlist for ask seeding and bid target sampling.
    */
   watchlist?: Watchlist;
-  /**
-   * Legacy traded.gg ListingsFeed options. Ignored when native is true.
-   * Prefer MultiSourceRadar → ListingStore + this feed.
-   */
-  listingsFeed?: ListingsFeedOptions;
-  /**
-   * Native path: asks from merged ListingStore (MultiSourceRadar),
-   * bids from BidsProvider. No traded.gg SSE.
-   */
-  native?: boolean;
   /** Bids provider(s): CC / ME / Courtyard / fixture. */
   bidsProvider?: BidsProvider | BidsProvider[];
   onEvent?: (ev: OrderbookEvent) => void;
-  /** When true, skip live listing SSE (tests / offline fixtures). */
+  /** When true, skip network bid streams (tests / offline fixtures). */
   offline?: boolean;
 }
 
 /**
- * Dual-sided book feed.
- * Asks: filtered merged listings (native MultiSourceRadar store, or legacy SSE).
+ * Dual-sided book feed (native only).
+ * Asks: filtered listings from MultiSourceRadar / PollEngine store.
  * Bids: BidsProvider(s) (CC / ME / Courtyard / fixture).
  */
 export class OrderbookFeed {
   private readonly listingStore: ListingStore;
   private readonly book: OrderbookStore;
   private readonly listingFilter: PullQuery;
-  private readonly listingsFeed: ListingsFeed | null;
   private readonly bidsProviders: BidsProvider[];
   private readonly onEvent?: (ev: OrderbookEvent) => void;
-  private readonly native: boolean;
   private bidStops: Array<() => void> = [];
   private abort: AbortController | null = null;
 
@@ -64,35 +50,8 @@ export class OrderbookFeed {
     this.listingFilter = isWatchlistEmpty(watchlist)
       ? { ...baseFilter }
       : { ...baseFilter, watchlist };
-    this.native =
-      opts.native === true ||
-      (opts.offline === true && !opts.listingsFeed);
     this.bidsProviders = normalizeBids(opts.bidsProvider);
     this.onEvent = opts.onEvent;
-
-    if (this.native) {
-      this.listingsFeed = null;
-    } else {
-      const feedOpts: ListingsFeedOptions = {
-        store: this.listingStore,
-        ...(opts.listingsFeed ?? {}),
-      };
-      this.listingsFeed = new ListingsFeed({
-        ...feedOpts,
-        store: this.listingStore,
-        snapshotQuery: {
-          limit: 300,
-          sort: "new",
-          ...this.listingFilter,
-          ...feedOpts.snapshotQuery,
-        },
-        offline: opts.offline ?? feedOpts.offline,
-        onEvent: (ev) => {
-          this.onListingEvent(ev);
-          feedOpts.onEvent?.(ev);
-        },
-      });
-    }
   }
 
   getOrderbookStore(): OrderbookStore {
@@ -105,15 +64,9 @@ export class OrderbookFeed {
 
   async start(): Promise<void> {
     this.abort = new AbortController();
-    if (this.listingsFeed) {
-      await this.listingsFeed.start();
-    }
-    // Seed asks from current listing store (native MultiSourceRadar merge or snapshot)
+    // Seed asks from current listing store
     this.syncAsksFromListings();
-    // Native: seed ME mints / Courtyard asset ids from listings already in store
-    if (this.native) {
-      this.seedBidsTargetsFromStore();
-    }
+    this.seedBidsTargetsFromStore();
     if (this.bidsProviders.length > 0) {
       for (const bidsProvider of this.bidsProviders) {
         try {
@@ -165,7 +118,7 @@ export class OrderbookFeed {
   }
 
   /**
-   * Native only: push listing tokenIds into bids providers so offer fetches
+   * Push listing tokenIds into bids providers so offer fetches
    * reuse MultiSourceRadar data (ME mints, Courtyard proofOfIntegrity).
    */
   private seedBidsTargetsFromStore(): void {
@@ -218,7 +171,7 @@ export class OrderbookFeed {
 
   /** Re-pull all bids providers once. */
   async refreshBids(extra: PullQuery = {}): Promise<void> {
-    if (this.native) this.seedBidsTargetsFromStore();
+    this.seedBidsTargetsFromStore();
     for (const p of this.bidsProviders) {
       try {
         const orders = await p.pull({ ...this.listingFilter, ...extra });
@@ -235,7 +188,6 @@ export class OrderbookFeed {
   }
 
   stop(): void {
-    this.listingsFeed?.stop();
     for (const s of this.bidStops) s();
     this.bidStops = [];
     this.abort?.abort();
@@ -250,35 +202,6 @@ export class OrderbookFeed {
       order,
       at: new Date().toISOString(),
     });
-  }
-
-  private onListingEvent(ev: FeedEvent): void {
-    const at = "at" in ev ? ev.at : new Date().toISOString();
-    if (ev.kind === "upsert") {
-      if (!listingMatchesFilter(ev.listing, this.listingFilter)) return;
-      const ask = listingToAsk(ev.listing);
-      this.book.upsertAsk(ask);
-      this.emit({ kind: "ask_upsert", order: ask, at });
-      this.emit({
-        kind: "book",
-        book: this.book.book(ask.instrumentKey, at),
-        at,
-      });
-    } else if (ev.kind === "close") {
-      const askId = `ask:${ev.id}`;
-      const prev = this.book.getAsk(askId);
-      this.book.removeAsk(askId);
-      this.emit({ kind: "ask_remove", id: askId, at });
-      if (prev) {
-        this.emit({
-          kind: "book",
-          book: this.book.book(prev.instrumentKey, at),
-          at,
-        });
-      }
-    } else if (ev.kind === "snapshot") {
-      this.syncAsksFromListings();
-    }
   }
 
   /**

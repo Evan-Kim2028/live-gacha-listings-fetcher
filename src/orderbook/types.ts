@@ -1,7 +1,6 @@
 /**
  * Orderbook / bid models.
  *
- * traded.gg public surface is primarily **asks** (listings for sale).
  * There is no public unauthenticated NFT bid orderbook SSE.
  * Bids are modeled for:
  *  - modular providers (fixture / future marketplace APIs)

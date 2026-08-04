@@ -1,6 +1,5 @@
 /**
  * Fan out to native marketplace providers and merge into one ListingStore.
- * traded.gg is not required; pass createDefaultProviders() for the default path.
  *
  * Parallel origin pulls (CC CDN ~30s floor, ME public). Cold full-book concurrent
  * pagination ~28s vs ~74s sequential (Solana pokemon ~21k rows;
@@ -15,7 +14,6 @@
  *
  * Optional FMV: {@link MultiSourceRadarOptions.fmvPlugins} (default []).
  * Runs after {@link syncAll} (store write-back) and/or {@link list} with
- * `enrichFmv: true`. Origin fmv wins; no traded.gg FMV dependency.
  */
 import type { RunCapture } from "../capture/RunCapture.js";
 import {

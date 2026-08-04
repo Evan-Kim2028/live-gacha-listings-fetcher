@@ -1,6 +1,5 @@
 /**
  * Multi-source poll loop: stagger origins, respect minIntervalMs
- * (CC CDN ~30-60s), merge into ListingStore. Alternative to traded.gg SSE
  * when you poll native providers. PollScheduler is an alias of PollEngine.
  *
  * Full warm pulls with `pruned > 0` run {@link applyDelistsFromSync} (orderbook

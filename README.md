@@ -1,6 +1,5 @@
 # traded-listings
 
-TypeScript library that pulls TCG listings from origin marketplaces (Collector Crypt, Magic Eden, and others), normalizes them into an identity-stable `ListingStore`, and keeps the book warm with `PollEngine`. Default path is native origin APIs. **traded.gg is not required.**
 
 Spine: `MultiSourceRadar` → `ListingStore` → `listingId({ provider, platform, nativeId })`.
 
@@ -159,7 +158,6 @@ poll.start();
 | `magiceden` | default | CC collection listings + token offers |
 | `courtyard` | live | Algolia `marketplace_prod_recently_listed` |
 | `beezie` / `renaiss` / `dyli` / `phygitals` | live scaffolds | Origin APIs; see `docs/NATIVE_SOURCES.md` |
-| `tradedgg` | optional reference | Opt-in only; not on the default registry path |
 | `fixture` | offline tests | |
 
 ```ts
@@ -210,7 +208,6 @@ for (const l of radar.list()) {
 
 ## Optional legacy adapters
 
-`TradedGgProvider` + `ListingsFeed` (SSE) remain as reference adapters for product research. They are not used by `native-radar`, `createDefaultProviders()`, or CLI `radar`.
 
 ## Develop
 

@@ -8,21 +8,19 @@ import {
   createRenaissProvider,
 } from "./longtail.js";
 import { createMagicEdenProvider, type MagicEdenOptions } from "./magiceden.js";
-import { createTradedGgProvider, type TradedGgOptions } from "./tradedgg.js";
 import type { ListingsProvider } from "./types.js";
 
 export type ProviderFactory = () => ListingsProvider;
 
 /**
  * Default product path: origin marketplaces only.
- * traded.gg is never in this list.
  */
 export const DEFAULT_NATIVE_PROVIDER_IDS = [
   "collectorcrypt",
   "magiceden",
 ] as const;
 
-/** Extended native set used by multi-source demos (still no traded.gg). */
+/** Extended native set used by multi-source demos. */
 export const NATIVE_PROVIDER_IDS = [
   "collectorcrypt",
   "magiceden",
@@ -36,7 +34,7 @@ export const NATIVE_PROVIDER_IDS = [
 /**
  * Solana-native multi-source set for radar (default purity).
  * Default: collectorcrypt + magiceden(collector_crypt) + phygitals.
- * Excludes: Courtyard (Polygon), Renaiss, DYLI, traded.gg, and **Beezie** (EVM).
+ * Excludes: Courtyard (Polygon), Renaiss, DYLI, and **Beezie** (EVM).
  * Opt into Beezie via createSolanaProviders({ includeBeezie: true }) or { includeEvm: true }.
  */
 export const SOLANA_PROVIDER_IDS = [
@@ -76,7 +74,7 @@ export interface DefaultProvidersOptions {
   courtyard?: boolean;
   /**
    * Full multi-source set: CC + Courtyard + Beezie + Renaiss + DYLI
-   * (+ Magic Eden unless `magiceden: false`). Never traded.gg.
+   * (+ Magic Eden unless `magiceden: false`).
    */
   all?: boolean;
 }
@@ -94,7 +92,6 @@ export interface SolanaProvidersOptions {
 
 /**
  * Build the default native provider set for MultiSourceRadar.
- * Never includes traded.gg — that adapter is opt-in via getProvider("tradedgg").
  *
  * - Default: collectorcrypt + magiceden (+ courtyard if `courtyard: true`)
  * - `all: true`: CC + Courtyard + Beezie + Renaiss + DYLI (+ ME unless `magiceden: false`)
@@ -129,7 +126,7 @@ export function createDefaultProviders(
 /**
  * Solana-native marketplace set (default purity).
  * Default: CC (Solana) + ME `collector_crypt` + Phygitals.
- * No Polygon Courtyard, no Renaiss/DYLI, no traded.gg, no Beezie (EVM).
+ * No Polygon Courtyard, no Renaiss/DYLI, no Beezie (EVM).
  * Opt into Beezie: `{ includeBeezie: true }` or `{ includeEvm: true }`.
  * Use with MultiSourceRadar.syncAll (per-provider soft-fail via allSettled).
  */
@@ -153,11 +150,9 @@ export function createSolanaProviders(
 }
 
 /**
- * Built-in native sources first (Collector Crypt, Magic Eden).
- * traded.gg remains registered only as an optional reference adapter.
+ * Built-in native sources (Collector Crypt, Magic Eden, long-tail venues, fixture).
  */
 export function registerBuiltins(opts?: {
-  tradedgg?: TradedGgOptions;
   fixture?: FixtureProviderOptions;
 }): void {
   registerProvider("collectorcrypt", () => createCollectorCryptProvider());
@@ -167,8 +162,6 @@ export function registerBuiltins(opts?: {
   registerProvider("renaiss", () => createRenaissProvider());
   registerProvider("dyli", () => createDyliProvider());
   registerProvider("phygitals", () => createPhygitalsProvider());
-  // Reference only — not the system of record, never a default
-  registerProvider("tradedgg", () => createTradedGgProvider(opts?.tradedgg));
   if (opts?.fixture) {
     const fixtureOpts = opts.fixture;
     registerProvider("fixture", () => createFixtureProvider(fixtureOpts));
@@ -182,5 +175,5 @@ export function registerBuiltins(opts?: {
   }
 }
 
-// Auto-register on import for CLI convenience
+// Auto-register on import so getProvider works out of the box.
 registerBuiltins();

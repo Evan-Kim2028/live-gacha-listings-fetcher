@@ -994,7 +994,7 @@ describe.skipIf(!runLive)("Collector Crypt live network", () => {
 });
 
 describe.skipIf(!runLive)("MultiSourceRadar", () => {
-  it("merges collectorcrypt (live) without traded.gg", async () => {
+  it("merges collectorcrypt (live)", async () => {
     const radar = new MultiSourceRadar({
       providers: [createCollectorCryptProvider()],
       filter: { tcg: "pokemon", limit: 3 },

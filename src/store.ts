@@ -420,7 +420,6 @@ export class ListingStore {
     return true;
   }
 
-  /** Remove by identity parts (traded.gg closed events: platform + instance_id). */
   removeByParts(provider: string, platform: string, nativeId: string): boolean {
     return this.removeOne(listingId({ provider, platform, nativeId }));
   }

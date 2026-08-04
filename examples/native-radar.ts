@@ -1,7 +1,6 @@
 /**
  * Native multi-source radar — product spine demo.
  * MultiSourceRadar + ListingStore + identity + OrderbookFeed (native).
- * Does NOT import or use traded.gg.
  *
  *   npx tsx examples/native-radar.ts
  *   npx tsx examples/native-radar.ts --no-me
@@ -22,7 +21,6 @@ async function main(): Promise<void> {
   const useCy = process.argv.includes("--courtyard") || useAll;
 
   // DEFAULT: collectorcrypt + magiceden. --all = CC+Courtyard+Beezie+Renaiss+DYLI (+ME).
-  // traded.gg never included.
   let providers = createDefaultProviders({
     all: useAll,
     courtyard: useCy,
@@ -54,12 +52,11 @@ async function main(): Promise<void> {
   await bookFeed.start();
   const book = bookFeed.getOrderbookStore();
 
-  const usedTradedGg = providers.some((p) => p.id === "tradedgg");
 
   console.log(
     JSON.stringify(
       {
-        ok: result.totalActive > 0 && !usedTradedGg,
+        ok: result.totalActive > 0,
         sources: providers.map((p) => p.id),
         durationMs: ms,
         totalActive: result.totalActive,
@@ -73,15 +70,14 @@ async function main(): Promise<void> {
         })),
         bidCount: book.allBids().length,
         askCount: book.allAsks().length,
-        usedTradedGg,
-        note: "Self-serve multi-source mirror — MultiSourceRadar + ListingStore + identity (faster than single aggregator hop)",
+        note: "MultiSourceRadar + ListingStore + OrderbookFeed (native origins)",
       },
       null,
       2,
     ),
   );
   bookFeed.stop();
-  if (result.totalActive < 1 || usedTradedGg) process.exit(1);
+  if (result.totalActive < 1) process.exit(1);
 }
 
 main().catch((e) => {

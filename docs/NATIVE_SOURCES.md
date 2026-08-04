@@ -4,7 +4,6 @@ Rebuild multi-venue **radar / listings / bids** from origin marketplaces as a se
 
 - **Spine:** `MultiSourceRadar` + `ListingStore` + `listingId` identity
 - **Defaults:** `collectorcrypt` + `magiceden` via `createDefaultProviders()`
-- **traded.gg** is a reference for UX/field design only. It is not a required dependency, not on the default registry path, and not used by `examples/native-radar.ts`.
 
 ## Status matrix
 
@@ -17,7 +16,6 @@ Rebuild multi-venue **radar / listings / bids** from origin marketplaces as a se
 | **Renaiss** | Yes tRPC `collectible.list` | `offer.*` needs auth | `createRenaissProvider` |
 | **DYLI** | Yes `GET www.dyli.io/api/explore` | highest_bid / on-chain | `createDyliProvider` |
 | **Phygitals** | Yes docs params (`page`/`itemsPerPage`/`listedStatus`); soft-fail + backoff on outage | claw buyback tx helpers | `createPhygitalsProvider` |
-| **traded.gg** | Optional reference adapter only | loan offers ≠ NFT bids | Deprecated for primary path |
 
 ## Aggregation architecture
 
@@ -29,9 +27,7 @@ Beezie/Renaiss/DYLI/… ───┘              │                        │
                                         ├─► BidsProviders (CC / ME offers)
                                         └─► OrderbookFeed (native asks+bids)
 
-createDefaultProviders() = [collectorcrypt, magiceden]  // never traded.gg
 createSolanaProviders()  = [collectorcrypt, magiceden(collector_crypt), phygitals]
-// excludes Courtyard (Polygon), Renaiss, DYLI, traded.gg, Beezie (EVM)
 // opt-in Beezie: createSolanaProviders({ includeBeezie: true }) or { includeEvm: true }
 ```
 
@@ -50,7 +46,6 @@ CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30
 | `magiceden` | `MagicEdenProvider` | Collection symbol **`collector_crypt`** (default) |
 | `phygitals` | `createPhygitalsProvider` | Official browse params; micro-USDC → USD; soft empty + `lastError` on outage |
 
-**Excluded by default:** Courtyard (Polygon), Renaiss, DYLI, traded.gg, **Beezie (EVM)**.
 
 **Opt-in Beezie (old breadth):** `createSolanaProviders({ includeBeezie: true })` or `createSolanaProviders({ includeEvm: true })` inserts `beezie` between ME and Phygitals.
 
@@ -248,13 +243,10 @@ curl "https://api-mainnet.magiceden.dev/v2/tokens/{mint}/listings"
 
 ## What we will not do
 
-- Depend on `www.traded.gg/api/radar` as the system of record
-- Put traded.gg in `createDefaultProviders()` or `native-radar`
 - Treat loan offerbooks as NFT buy bids
 
 ## Verification (2026-08-01)
 
-`npm test` (97) · `npx tsx examples/native-radar.ts --all` → `usedTradedGg: false`, multi-provider, `totalActive > 0`. Native default (`createDefaultProviders` / `MultiSourceRadar` / `OrderbookFeed({ native: true })`) never HTTP-calls `www.traded.gg` (comments + opt-in `tradedgg` / legacy `ListingsFeed` / `stream` CLI only).
 
 ### Remaining blockers
 

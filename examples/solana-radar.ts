@@ -86,12 +86,11 @@ async function main(): Promise<void> {
   const book = bookFeed.getOrderbookStore();
   bookFeed.stop();
 
-  const usedTradedGg = providers.some((p) => p.id === "tradedgg");
 
   console.log(
     JSON.stringify(
       {
-        ok: result.totalActive > 0 && !usedTradedGg,
+        ok: result.totalActive > 0,
         mode: doPoll ? "one-shot+poll" : "one-shot",
         sources: providers.map((p) => p.id),
         filter,
@@ -121,16 +120,14 @@ async function main(): Promise<void> {
           })),
         bidCount: book.allBids().length,
         askCount: book.allAsks().length,
-        usedTradedGg,
         note:
-          "Solana real-time: PollEngine parallel minInterval 15–30s per origin — no single SSE for all sources",
+          "Solana: PollEngine parallel minInterval 15–30s per origin",
       },
       null,
       2,
     ),
   );
-
-  if (result.totalActive < 1 || usedTradedGg) process.exit(1);
+  if (result.totalActive < 1) process.exit(1);
 }
 
 main().catch((e) => {

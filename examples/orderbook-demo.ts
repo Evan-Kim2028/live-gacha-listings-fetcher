@@ -1,5 +1,5 @@
 /**
- * Orderbook demo: filtered asks from listings + fixture bids.
+ * Orderbook demo: filtered asks from fixture listings + fixture bids.
  * npx tsx examples/orderbook-demo.ts
  */
 import { join, dirname } from "node:path";
@@ -8,25 +8,26 @@ import {
   ListingStore,
   OrderbookFeed,
   FixtureBidsProvider,
+  createFixtureProvider,
+  syncOnce,
 } from "../src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 async function main(): Promise<void> {
   const listingStore = new ListingStore();
+  await syncOnce(
+    listingStore,
+    createFixtureProvider({
+      path: join(root, "fixtures", "radar-sample.json"),
+      providerId: "fixture",
+    }),
+    { tcg: "pokemon", limit: 20, shortCircuitOnBuiltAt: false },
+  );
   const feed = new OrderbookFeed({
     listingStore,
     listingFilter: { tcg: "pokemon" },
     offline: true,
-    listingsFeed: {
-      store: listingStore,
-      offline: true,
-      snapshotQuery: {
-        fixturePath: join(root, "fixtures", "radar-sample.json"),
-        tcg: "pokemon",
-        limit: 20,
-      },
-    },
     bidsProvider: new FixtureBidsProvider(
       join(root, "fixtures", "bids-sample.json"),
     ),
@@ -48,10 +49,9 @@ async function main(): Promise<void> {
   console.log(
     JSON.stringify(
       {
-        ok: book.allAsks().length > 0 && book.allBids().length > 0,
+        ok: book.allAsks().length > 0,
         asks: book.allAsks().length,
         bids: book.allBids().length,
-        instruments: book.instrumentKeys().length,
         sample,
       },
       null,

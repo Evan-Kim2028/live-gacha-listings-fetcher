@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { listingId } from "../src/identity.js";
 import { ListingStore, trimListing } from "../src/store.js";
 import { syncOnce } from "../src/sync.js";
-import { createTradedGgProvider } from "../src/providers/tradedgg.js";
 import { createFixtureProvider } from "../src/providers/fixture.js";
 import type { ListingsProvider, PullPage, PullQuery } from "../src/providers/types.js";
 import type { Listing } from "../src/types.js";
@@ -110,10 +109,12 @@ class PlatformFilterProvider implements ListingsProvider {
 describe("idempotent upsert + double-sync", () => {
   it("double-sync of same radar fixture does not grow row count", async () => {
     const store = new ListingStore();
-    const provider = createTradedGgProvider();
+    const provider = createFixtureProvider({
+      path: fixturePath,
+      providerId: "fixture",
+    });
 
     const first = await syncOnce(store, provider, {
-      fixturePath,
       shortCircuitOnBuiltAt: false,
     });
     expect(first.fetched).toBeGreaterThan(0);
@@ -121,7 +122,6 @@ describe("idempotent upsert + double-sync", () => {
     const keys1 = new Set(store.list().map((l) => l.id));
 
     const second = await syncOnce(store, provider, {
-      fixturePath,
       shortCircuitOnBuiltAt: false,
     });
     const keys2 = new Set(store.list().map((l) => l.id));
@@ -136,13 +136,14 @@ describe("idempotent upsert + double-sync", () => {
 
   it("builtAt short-circuit skips re-apply when query+ids unchanged", async () => {
     const store = new ListingStore();
-    const provider = createTradedGgProvider();
+    const provider = createFixtureProvider({
+      path: fixturePath,
+      providerId: "fixture",
+    });
     await syncOnce(store, provider, {
-      fixturePath,
       shortCircuitOnBuiltAt: false,
     });
     const r = await syncOnce(store, provider, {
-      fixturePath,
       shortCircuitOnBuiltAt: true,
     });
     expect(r.shortCircuited).toBe(true);
@@ -334,11 +335,13 @@ describe("idempotent upsert + double-sync", () => {
     expect(store.size()).toBe(2);
   });
 
-  it("fixture provider + tradedgg keys coexist without collision", async () => {
+  it("two fixture providers coexist without id collision", async () => {
     const store = new ListingStore();
-    const traded = createTradedGgProvider();
-    await syncOnce(store, traded, {
-      fixturePath,
+    const primary = createFixtureProvider({
+      path: fixturePath,
+      providerId: "fixture",
+    });
+    await syncOnce(store, primary, {
       shortCircuitOnBuiltAt: false,
     });
     const n1 = store.size();

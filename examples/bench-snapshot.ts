@@ -3,7 +3,6 @@
  *
  * Times wall-clock of MultiSourceRadar.syncAll over createSolanaProviders()
  * (CC Solana + ME collector_crypt + Phygitals soft-fail; Beezie EVM excluded by default).
- * Never uses traded.gg.
  *
  *   npx tsx examples/bench-snapshot.ts
  *   npx tsx examples/bench-snapshot.ts --naive   # also run (C) clear + full re-sync
@@ -40,8 +39,6 @@ async function main(): Promise<void> {
 
   const providers = createSolanaProviders();
   const sources = providers.map((p) => p.id);
-  const usedTradedGg = sources.includes("tradedgg");
-  const multiSource = sources.length >= 2 && !usedTradedGg;
 
   const filter = { tcg: "pokemon" as const, limit, sort: "new" as const };
   const radar = new MultiSourceRadar({ providers, filter });
@@ -83,9 +80,8 @@ async function main(): Promise<void> {
   }
 
   const phases = [cold, warm, ...(naive ? [naive] : [])];
-
-  // Bench succeeds if it ran multi-source Solana set without traded.gg
-  const ok = multiSource && !usedTradedGg;
+  const multiSource = sources.length >= 2;
+  const ok = multiSource && cold.totalActive > 0;
 
   console.log(
     JSON.stringify(
@@ -94,7 +90,6 @@ async function main(): Promise<void> {
         sources,
         filter,
         multiSource,
-        usedTradedGg,
         phases: phases.map((p) => ({
           label: p.label,
           wallMs: p.wallMs,
@@ -112,7 +107,7 @@ async function main(): Promise<void> {
           ...(naive ? { C_naive_clear_resync: naive.wallMs } : {}),
         },
         note:
-          "A=cold parallel Solana set; B=warm second pull (generation short-circuit when fingerprint/etag match); C=optional store.clear + full re-sync. No traded.gg. shortCircuited = count of providers that skipped replaceScopeSnapshot.",
+          "A=cold parallel Solana set; B=warm second pull; C=optional store.clear + full re-sync",
       },
       null,
       2,

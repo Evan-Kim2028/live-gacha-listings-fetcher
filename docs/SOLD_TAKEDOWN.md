@@ -2,7 +2,6 @@
 
 How listings leave the live book on the **Solana-native** path: poll-diff is primary; soft-fail and incomplete pages never wipe inventory; orderbook sold events capture last top-of-book, not proven on-chain fills.
 
-**Scope:** `createSolanaProviders()` defaults — `collectorcrypt`, `magiceden` (`collector_crypt`), `phygitals`. Beezie is **opt-in EVM** (`includeBeezie` / `includeEvm`), not Solana-native. traded.gg SSE is **not** on this path; it remains the only source of explicit `closed` wire events.
 
 **Primary code:** `src/sync.ts` (`syncOnce`), `src/store.ts` (`replaceScopeSnapshot`, soft-fail paths), `src/lifecycle/delist.ts` (`applyDelistsFromSync`), `src/aggregate/MultiSourceRadar.ts` + `PollEngine` (call apply after each `SyncResult` with `pruned > 0`), `src/orderbook/OrderbookFeed.ts` (`refreshAsks` / `syncAsksFromListings`, sold `reason: delisted_or_sold`), `src/capture/types.ts` + `RunCapture.onSold`, `examples/runtime-monitor.ts`.
 
@@ -70,7 +69,6 @@ After each successful listing sync tick, native monitors call `OrderbookFeed.ref
 | `missing_from_full_snapshot` | Id was in prior scope; absent from a complete full-scope re-pull → store prune (`closed`) |
 | `soft_fail_no_prune` | Soft-fail empty (or equivalent origin error empty page) → **no** prune |
 | `incomplete_page_no_prune` | Partial / `hasMore` page vs larger prior scope → upsert only, **no** prune |
-| `explicit_closed` | traded.gg SSE `type: "closed"` → `store.removeOne` (**traded.gg only**; not Solana native) |
 
 ### Orderbook / capture sold payload
 
@@ -108,7 +106,6 @@ True fill price needs marketplace trade history or chain/indexer events (future)
 
 **All three:** no marketplace-native SSE for list/delist on the Solana radar path today. Freshness = `PollEngine` parallel poll (typical `minIntervalMs` 15–30s; CC floor driven by CDN ~30s).
 
-**Not default Solana:** Beezie (EVM opt-in), Courtyard (Polygon), traded.gg (reference / legacy SSE only).
 
 ### 6.1 Magic Eden `collector_crypt` — poll-diff only (no bulk sold SSE)
 

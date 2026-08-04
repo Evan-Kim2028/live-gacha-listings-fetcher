@@ -297,4 +297,3 @@ engine.start()
 
 - Replacing a production time-series DB. This layout is a local-disk proof run.
 - Logging full order ladders or raw HTTP bodies every tick.
-- Depending on traded.gg SSE; native path is `MultiSourceRadar` / `PollEngine` + optional `OrderbookFeed({ native: true })`.

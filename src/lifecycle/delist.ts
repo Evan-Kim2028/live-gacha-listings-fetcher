@@ -51,7 +51,6 @@ export interface DelistEvent {
  * 3. Emit sold/delist to `RunCapture` (`sold.jsonl` + `events.jsonl`) when capture is set.
  *
  * Soft-fail / incomplete-page results have empty `prunedIds` and yield nothing.
- * Does not require traded.gg.
  */
 export function applyDelistsFromSync(
   result: SyncResult,

@@ -34,7 +34,7 @@ function isHttpUrl(s: string | null | undefined): s is string {
  *
  * 1. Prefer `listing.externalUrl` when it is http(s).
  * 2. Else construct from provider/platform using known origin patterns.
- * 3. Else null (beezie / fixture / tradedgg / unknown without origin URL).
+ * 3. Else null (beezie / fixture / unknown without origin URL).
  */
 export function listingOpenUrl(listing: ListingOpenUrlInput): string | null {
   if (isHttpUrl(listing.externalUrl)) {
@@ -72,7 +72,7 @@ export function listingOpenUrl(listing: ListingOpenUrlInput): string | null {
     case "dyli":
       return dyliListingUrl(nativeId) ?? dyliListingUrl(mintOrToken);
 
-    // beezie / fixture / tradedgg / unknown: no stable construct without origin URL
+    // beezie / fixture / unknown: no stable construct without origin URL
     default:
       return null;
   }

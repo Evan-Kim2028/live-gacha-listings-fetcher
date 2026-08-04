@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 /**
  * CLI — default product path is native multi-source radar (CC + ME).
- * traded.gg is opt-in via --provider tradedgg only.
  *
  * Poll: PollEngine / PollScheduler — multi-source poll with per-provider
  * minIntervalMs (CC 30s / ME 20s / Beezie 20s by default). --all =
- * CC+Courtyard+Beezie+Renaiss+DYLI (+ME). No single SSE fan-in for all
- * sources — each origin is polled independently.
+ * CC+Courtyard+Beezie+Renaiss+DYLI (+ME). Each origin is polled independently.
  *
  * Native origin hops in parallel are typically faster than a single
  * aggregator re-scrape hop for the same venues.
@@ -43,10 +41,9 @@ function usage(): never {
   traded-listings bootstrap [--solana|--all] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
   traded-listings poll [--all] [--solana] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
   traded-listings monitor [--offline] [--all] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
-  traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture|tradedgg]
-  traded-listings stream [--seconds N] [--limit N]   # legacy traded.gg SSE reference only
+  traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture]
 
-Default command: radar (native MultiSourceRadar — no traded.gg)
+Default command: radar (native MultiSourceRadar)
 Bootstrap: cold MultiSourceRadar.bootstrapAll (pullAll + bootstrap:true) →
   persist data/books/<scope>/; --resume hydrates when snapshot is fresh.
   Optional --poll warm PollEngine on the SAME filter/signature (short-circuit on).
@@ -166,7 +163,6 @@ async function runRadar(args: string[]): Promise<void> {
         })),
         note: solana
           ? "Solana MultiSourceRadar (createSolanaProviders) — parallel origin hops; live via poll --solana"
-          : "Native MultiSourceRadar — parallel origin hops, traded.gg not used",
       },
       null,
       2,
@@ -333,12 +329,11 @@ async function runBootstrap(args: string[]): Promise<void> {
     }
   }
 
-  const usedTradedGg = providerIds.includes("tradedgg");
   const totalActive = radar.store.size();
   console.log(
     JSON.stringify(
       {
-        ok: totalActive > 0 && !usedTradedGg,
+        ok: totalActive > 0,
         command: "bootstrap",
         skippedCold,
         resume,
@@ -379,13 +374,13 @@ async function runBootstrap(args: string[]): Promise<void> {
           })),
         note: skippedCold
           ? "Resumed from data/books snapshot; warm poll uses same filter/signature"
-          : "Cold bootstrapAll(bootstrap:true) → saved book; no traded.gg; FMV origin-only",
+          : "Cold bootstrapAll(bootstrap:true) → saved book; FMV origin-only",
       },
       null,
       2,
     ),
   );
-  if (totalActive < 1 || usedTradedGg) process.exit(1);
+  if (totalActive < 1) process.exit(1);
 }
 
 async function runPoll(args: string[]): Promise<void> {
@@ -543,7 +538,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("-h") || args.includes("--help")) usage();
 
-  // Default product: native multi-source radar (no traded.gg)
+  // Default product: native multi-source radar
   const known = new Set([
     "radar",
     "native",
@@ -551,7 +546,6 @@ async function main(): Promise<void> {
     "poll",
     "monitor",
     "sync",
-    "stream",
   ]);
   const first = args[0];
   const cmd = first && known.has(first) ? first : "radar";
@@ -592,46 +586,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (cmd === "stream") {
-    const { ListingsFeed } = await import("./stream/ListingsFeed.js");
-    const seconds = flagNum(rest, "--seconds") ?? 20;
-    const limit = flagNum(rest, "--limit") ?? 50;
-    const store = new ListingStore();
-    let upserts = 0;
-    let closes = 0;
-    const feed = new ListingsFeed({
-      store,
-      snapshotQuery: { limit, sort: "new" },
-      onEvent: (ev) => {
-        if (ev.kind === "upsert") upserts += 1;
-        if (ev.kind === "close") closes += 1;
-      },
-    });
-    await feed.start();
-    await new Promise((r) => setTimeout(r, seconds * 1000));
-    const stats = feed.getStats();
-    feed.stop();
-    console.log(
-      JSON.stringify(
-        {
-          stats,
-          upserts,
-          closes,
-          activeCount: store.size(),
-          sample: store.list().slice(0, 3).map((l) => ({
-            id: l.id,
-            price: l.price,
-            name: l.name.slice(0, 50),
-          })),
-          note: "Legacy traded.gg SSE reference path",
-        },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-
   if (cmd !== "sync") usage();
 
   const live = rest.includes("--live");
@@ -641,7 +595,7 @@ async function main(): Promise<void> {
     fixIdx >= 0 ? rest[fixIdx + 1]! : join(root, "fixtures", "radar-sample.json"),
   );
   const provIdx = rest.indexOf("--provider");
-  // Default: native collectorcrypt (live) or fixture offline — never traded.gg
+  // Default: native collectorcrypt (live) or fixture offline
   const providerId =
     provIdx >= 0
       ? rest[provIdx + 1]!
@@ -662,16 +616,6 @@ async function main(): Promise<void> {
       shortCircuitOnBuiltAt: false,
       fixturePath: fixture,
     };
-  } else if (providerId === "tradedgg") {
-    provider = getProvider("tradedgg");
-    options = live
-      ? { limit, sort: "new", shortCircuitOnBuiltAt: false }
-      : {
-          limit,
-          sort: "new",
-          fixturePath: fixture,
-          shortCircuitOnBuiltAt: false,
-        };
   } else {
     provider = getProvider(providerId);
     options = {
