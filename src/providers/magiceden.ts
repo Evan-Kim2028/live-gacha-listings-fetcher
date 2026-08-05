@@ -11,6 +11,7 @@
  */
 import { contentFingerprint } from "../contentFingerprint.js";
 import { meListingUrl } from "../externalUrl.js";
+import { deltaFromListing } from "../fmv/delta.js";
 import { listingId } from "../identity.js";
 import {
   fetchWithRetry,
@@ -332,10 +333,7 @@ export function normalizeMeListing(
     price: priceUsd,
     currency: "USDC",
     fmv,
-    delta:
-      fmv != null && fmv > 0
-        ? Math.round(((priceUsd - fmv) / fmv) * 100)
-        : null,
+    delta: deltaFromListing(priceUsd, fmv, "USDC"),
     market: "Magic Eden",
     seller: row.seller ?? null,
     // Prefer origin token.externalUrl; always fall back to public mint page.

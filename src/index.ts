@@ -337,7 +337,9 @@ export {
  */
 export {
   applyFmvPlugins,
+  deltaFromListing,
   deltaFromPriceAndFmv,
+  isUsdEquivalentCurrency,
   FixtureFmvProvider,
   type FmvProvider,
   type FixtureFmvLookup,

@@ -24,6 +24,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { courtyardListingUrl, originProvidedUrl } from "../externalUrl.js";
+import { deltaFromListing } from "../fmv/delta.js";
 import { listingId } from "../identity.js";
 import { fetchWithRetry } from "../http/fetchWithRetry.js";
 import {
@@ -133,6 +134,7 @@ export function normalizeCourtyardAlgoliaHit(
   const fmv =
     hit.estimatedValueUsd == null ? null : Number(hit.estimatedValueUsd);
   const name = hit.title ?? meta["Title/Subject"] ?? tokenId;
+  const currency = hit.price?.currency ?? "USDC";
   return {
     id: listingId({
       provider: providerId,
@@ -145,12 +147,9 @@ export function normalizeCourtyardAlgoliaHit(
     tokenId,
     name,
     price: p,
-    currency: hit.price?.currency ?? "USDC",
+    currency,
     fmv: fmv != null && Number.isFinite(fmv) ? fmv : null,
-    delta:
-      fmv != null && Number.isFinite(fmv) && fmv > 0
-        ? Math.round(((p - fmv) / fmv) * 100)
-        : null,
+    delta: deltaFromListing(p, fmv, currency),
     market: "Courtyard",
     seller: hit.ownerAddress ?? hit.latestListing?.maker ?? meta.OwnerAddress ?? null,
     // Prefer origin http(s) URL when present; else stable courtyard.io asset page.
