@@ -22,6 +22,7 @@
  */
 import { contentFingerprint } from "../contentFingerprint.js";
 import { ccListingUrl } from "../externalUrl.js";
+import { deltaFromListing } from "../fmv/delta.js";
 import { listingId } from "../identity.js";
 import {
   fetchWithRetry,
@@ -412,6 +413,7 @@ export function normalizeCcCard(
   });
   const fmvRaw = card.insuredValue;
   const fmv = fmvRaw == null || fmvRaw === "" ? null : Number(fmvRaw);
+  const currency = (listing.currency ?? "USDC").toString();
   const offerCount = countOfferRefs(card).refs;
   return {
     id,
@@ -421,12 +423,11 @@ export function normalizeCcCard(
     tokenId: card.nftAddress ?? null,
     name: card.itemName ?? nativeId,
     price,
-    currency: (listing.currency ?? "USDC").toString(),
+    currency,
     fmv: fmv != null && Number.isFinite(fmv) ? fmv : null,
-    delta:
-      fmv != null && Number.isFinite(fmv) && fmv > 0
-        ? Math.round(((price - fmv) / fmv) * 100)
-        : null,
+    // `insuredValue` is USD; CC also lists in SOL. deltaFromListing returns
+    // null for non-USD prices instead of a fake ~-97% discount.
+    delta: deltaFromListing(price, fmv, currency),
     market: listing.marketplace === "ME" ? "Magic Eden" : "CC Native",
     seller: card.owner?.wallet ?? listing.sellerId ?? null,
     // Public card page (deep-link only; no tx). Prefer mint; fall back to card id

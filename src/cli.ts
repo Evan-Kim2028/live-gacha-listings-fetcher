@@ -34,6 +34,8 @@ import { listingOpenUrl } from "./trader/deepLinks.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
+/** Total-row cap applied to `bootstrap` when `--limit` is omitted. */
+const BOOTSTRAP_DEFAULT_LIMIT = 50_000;
 
 function usage(): never {
   console.error(`Usage:
@@ -163,6 +165,7 @@ async function runRadar(args: string[]): Promise<void> {
         })),
         note: solana
           ? "Solana MultiSourceRadar (createSolanaProviders) — parallel origin hops; live via poll --solana"
+          : "MultiSourceRadar — parallel origin hops; live via poll",
       },
       null,
       2,
@@ -214,9 +217,11 @@ async function runBootstrap(args: string[]): Promise<void> {
 
   // Decision filter: shared by cold + warm (no bootstrap/maxPages in signature)
   const filter = decisionFilter(buildFilter(args));
-  // Default higher limit for cold book when not specified
+  // `--limit` is a TOTAL row cap, not a page size. A cold bootstrap wants the
+  // whole book, so default it high enough not to truncate (measured full pokemon
+  // book ≈ 21k rows across cc + me + phygitals); pass --limit explicitly to cap.
   if (flagNum(args, "--limit") == null && !offline) {
-    filter.limit = 500;
+    filter.limit = BOOTSTRAP_DEFAULT_LIMIT;
   }
 
   let providers: ListingsProvider[];

@@ -1,6 +1,6 @@
 import type { Listing } from "../types.js";
 import type { FmvProvider } from "./FmvProvider.js";
-import { deltaFromPriceAndFmv } from "./delta.js";
+import { deltaFromListing } from "./delta.js";
 
 /**
  * Apply FMV plugins to a listing snapshot.
@@ -63,7 +63,7 @@ export async function applyFmvPlugins(
         out[idx] = {
           ...next,
           fmv: next.fmv,
-          delta: deltaFromPriceAndFmv(next.price, next.fmv),
+          delta: deltaFromListing(next.price, next.fmv, next.currency),
         };
       } else {
         // Keep plugin's other field tweaks if any, still need FMV

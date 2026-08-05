@@ -13,6 +13,7 @@ import {
   phygitalsListingUrl,
   renaissListingUrl,
 } from "../externalUrl.js";
+import { deltaFromListing } from "../fmv/delta.js";
 import { listingId } from "../identity.js";
 import {
   fetchWithRetry,
@@ -301,10 +302,7 @@ export function normalizePhygitalsRow(
     price,
     currency: "USDC",
     fmv: fmv != null && Number.isFinite(fmv) ? fmv : null,
-    delta:
-      fmv != null && Number.isFinite(fmv) && fmv > 0
-        ? Math.round(((price - fmv) / fmv) * 100)
-        : null,
+    delta: deltaFromListing(price, fmv, "USDC"),
     market:
       typeof row.marketplace === "string"
         ? `Phygitals (${row.marketplace})`
@@ -615,10 +613,7 @@ export function normalizeRenaissRow(
     price,
     currency: "USDC",
     fmv: fmv != null && Number.isFinite(fmv) ? fmv : null,
-    delta:
-      fmv != null && Number.isFinite(fmv) && fmv > 0
-        ? Math.round(((price - fmv) / fmv) * 100)
-        : null,
+    delta: deltaFromListing(price, fmv, "USDC"),
     market: "Renaiss",
     seller: (row.ownerAddress as string) ?? null,
     // Prefer origin URL; else construct public /card/{tokenId} page.
