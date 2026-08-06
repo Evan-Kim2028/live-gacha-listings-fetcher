@@ -83,6 +83,24 @@ export {
   type CcBlockchain,
 } from "./providers/collectorcrypt.js";
 
+/** CC row shapes 1:1 with lake insured + offers parquet columns. */
+export {
+  lakeListingFromCcCard,
+  lakeOfferFromCcOffer,
+  lakeOffersFromCcOffers,
+  summarizeLakeMintBids,
+  attachLakeListingToRaw,
+  attachLakeOfferToRaw,
+  extractLakeListings,
+  extractLakeOffers,
+  type CcLakeListingRow,
+  type CcLakeOfferRow,
+  type CcLakeMintBidSummary,
+  type CcLakeContext,
+  type CcLakeCardLike,
+  type CcLakeOfferLike,
+} from "./providers/ccLakeSchema.js";
+
 export {
   MagicEdenProvider,
   MagicEdenBidsProvider,

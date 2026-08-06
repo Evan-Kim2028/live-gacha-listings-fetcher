@@ -18,7 +18,8 @@
  * - Browse embeds `offers` often as `{ id }` only (docs + live).
  * - Priced detail: POST / JSON-RPC `{ method: "getCardOffers", params: { nftAddress, useV2: true } }`
  *   (same path the CC web app uses; not documented on marketplace/api).
- * - Listing.raw always gets `offerCount` (id refs on browse card).
+ * - Listing.raw always gets `offerCount` + lake_listing (1:1 insured columns).
+ * - BidOrder.raw gets lake_offer (1:1 priced-offer columns) after getCardOffers.
  */
 import { contentFingerprint } from "../contentFingerprint.js";
 import { ccListingUrl } from "../externalUrl.js";
@@ -45,6 +46,12 @@ import {
   bidCacheKey,
   mapWithBidBudget,
 } from "../orderbook/bidBudget.js";
+import {
+  attachLakeListingToRaw,
+  attachLakeOfferToRaw,
+  lakeListingFromCcCard,
+  lakeOfferFromCcOffer,
+} from "./ccLakeSchema.js";
 
 const DEFAULT_BASE = "https://api.collectorcrypt.com";
 const MAX_STEP = 100;
@@ -126,9 +133,13 @@ export interface CcCard {
   owner?: { wallet?: string; name?: string; id?: string };
   images?: { front?: string; frontS?: string; frontM?: string };
   insuredValue?: string | number;
+  /** Platform suggest / secondary mark when present on API. */
+  suggestPrice?: string | number;
   blockchain?: string;
   set?: string;
   serial?: string;
+  nftStatus?: string;
+  vault?: string;
   [key: string]: unknown;
 }
 
@@ -397,6 +408,7 @@ export function lastEventFromCcCard(card: CcCard): Listing["lastEvent"] {
 export function normalizeCcCard(
   card: CcCard,
   providerId = "collectorcrypt",
+  opts: { observedAt?: string } = {},
 ): Listing | null {
   const listing = card.listing;
   if (!listing || listing.price == null) return null;
@@ -415,7 +427,10 @@ export function normalizeCcCard(
   const fmv = fmvRaw == null || fmvRaw === "" ? null : Number(fmvRaw);
   const currency = (listing.currency ?? "USDC").toString();
   const offerCount = countOfferRefs(card).refs;
-  return {
+  const lake = lakeListingFromCcCard(card, {
+    observed_at: opts.observedAt,
+  });
+  const base: Listing = {
     id,
     provider: providerId,
     platform,
@@ -455,6 +470,7 @@ export function normalizeCcCard(
     // card.status kept on raw when present (catalog ownership, not leave-book).
     raw: { ...card, offerCount },
   };
+  return lake ? attachLakeListingToRaw(base, lake) : base;
 }
 
 export function bidderFromCcOffer(o: CcOfferRef): string | null {
@@ -471,15 +487,27 @@ export function bidderFromCcOffer(o: CcOfferRef): string | null {
 /** Map one priced CC offer into a BidOrder (null if no usable price). */
 export function normalizeCcOffer(
   o: CcOfferRef,
-  card: Pick<CcCard, "id" | "nftAddress" | "gradingCompany" | "grade" | "gradeNum">,
+  card: Pick<
+    CcCard,
+    | "id"
+    | "nftAddress"
+    | "gradingCompany"
+    | "grade"
+    | "gradeNum"
+    | "itemName"
+    | "category"
+    | "insuredValue"
+    | "listing"
+  >,
   providerId = "collectorcrypt",
+  opts: { observedAt?: string } = {},
 ): BidOrder | null {
   if (!o?.id) return null;
   const price = o.price == null ? null : Number(o.price);
   if (price == null || !Number.isFinite(price) || price <= 0) return null;
   const status = (o.status ?? "Active").toString().toLowerCase();
   if (status && status !== "active" && status !== "open") return null;
-  return {
+  const bid: BidOrder = {
     id: listingId({
       provider: providerId,
       platform: "cc",
@@ -500,17 +528,22 @@ export function normalizeCcOffer(
       new Date().toISOString(),
     raw: o,
   };
+  const lake = lakeOfferFromCcOffer(o, card as CcCard, {
+    observed_at: opts.observedAt,
+  });
+  return lake ? attachLakeOfferToRaw(bid, lake) : bid;
 }
 
 /** Map CC offer refs on a card into BidOrders (when price present). */
 export function normalizeCcOffers(
   card: CcCard,
   providerId = "collectorcrypt",
+  opts: { observedAt?: string } = {},
 ): BidOrder[] {
   const offers = card.offers ?? [];
   const out: BidOrder[] = [];
   for (const o of offers) {
-    const b = normalizeCcOffer(o, card, providerId);
+    const b = normalizeCcOffer(o, card, providerId, opts);
     if (b) out.push(b);
   }
   return out;
@@ -1173,8 +1206,11 @@ export class CollectorCryptBidsProvider implements BidsProvider {
           cacheHit: preHit.has(mint),
         });
         detailOffersRaw += r.offers.length;
+        const observedAt = new Date().toISOString();
         for (const o of r.offers) {
-          const b = normalizeCcOffer(o, card, "collectorcrypt");
+          const b = normalizeCcOffer(o, { ...card, nftAddress: mint }, "collectorcrypt", {
+            observedAt,
+          });
           if (!b) continue;
           if (query.instrumentKey && b.instrumentKey !== query.instrumentKey) {
             continue;

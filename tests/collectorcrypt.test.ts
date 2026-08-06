@@ -80,6 +80,22 @@ describe("Collector Crypt normalize + URL", () => {
     expect(l!.externalUrl).toBe(
       "https://collectorcrypt.com/cards/Mint111",
     );
+    // lake 1:1 insured columns on raw
+    const lake = (l!.raw as { lake_listing?: Record<string, unknown> })
+      .lake_listing;
+    expect(lake).toMatchObject({
+      nft_address: "Mint111",
+      card_id: "card_abc",
+      insured_value_usd: 120,
+      ask_usd: 100,
+      has_listing: true,
+      n_offers: 2,
+      offer_ids: "off1|off2",
+      set_name: "Base Set",
+      grader: "PSA",
+      grade_num: 10,
+      owner_wallet: "Seller1",
+    });
   });
 
   it("always sets externalUrl from mint or card id", () => {
@@ -118,7 +134,7 @@ describe("Collector Crypt normalize + URL", () => {
       price: "45.7",
       currency: "USDC",
       status: "Active",
-      buyer: { wallet: "BuyerWallet9", id: "u1" },
+      buyer: { wallet: "BuyerWallet9", id: "u1", name: "BEST OFFER" },
       createdAt: "2026-07-31T08:00:00.000Z",
     };
     const b = normalizeCcOffer(detail, sampleCard);
@@ -126,6 +142,17 @@ describe("Collector Crypt normalize + URL", () => {
     expect(b!.price).toBe(45.7);
     expect(b!.bidder).toBe("BuyerWallet9");
     expect(b!.nativeId).toBe("det1");
+    const lake = (b!.raw as { lake_offer?: Record<string, unknown> }).lake_offer;
+    expect(lake).toMatchObject({
+      nft_address: "Mint111",
+      offer_id: "det1",
+      price_usd: 45.7,
+      buyer_wallet: "BuyerWallet9",
+      buyer_name: "BEST OFFER",
+      insured_value_usd: 120,
+      ask_usd: 100,
+      bid_over_insured: 45.7 / 120,
+    });
   });
 
   it("builds page/step + tcg/price/grader query params", () => {
