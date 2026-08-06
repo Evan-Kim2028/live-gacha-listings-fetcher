@@ -26,6 +26,11 @@ export interface OrderbookFeedOptions {
   onEvent?: (ev: OrderbookEvent) => void;
   /** When true, skip network bid streams (tests / offline fixtures). */
   offline?: boolean;
+  /**
+   * Prefer native marketplace bids/asks (CLI flag). Accepted for API
+   * compatibility; feed is always native-origin when bids providers are set.
+   */
+  native?: boolean;
 }
 
 /**

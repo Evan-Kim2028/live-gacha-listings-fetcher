@@ -82,14 +82,13 @@ export function dyliListingUrl(
  * Used when origin may carry `external_url` / `url`, and as the only option
  * for catalogs (Beezie) with no stable constructible public path from ids.
  */
-export function originProvidedUrl(row: {
-  external_url?: unknown;
-  url?: unknown;
-  externalUrl?: unknown;
-  href?: unknown;
-}): string | null {
+export function originProvidedUrl(
+  row: Record<string, unknown> | object | null | undefined,
+): string | null {
+  if (row == null || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
   for (const k of ["external_url", "externalUrl", "url", "href"] as const) {
-    const v = row[k];
+    const v = r[k];
     if (typeof v === "string" && /^https?:\/\//i.test(v.trim())) {
       return v.trim();
     }
