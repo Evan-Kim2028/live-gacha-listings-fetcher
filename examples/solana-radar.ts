@@ -27,6 +27,11 @@ function flagNum(args: string[], name: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function flagStr(args: string[], name: string): string | undefined {
+  const i = args.indexOf(name);
+  return i < 0 ? undefined : args[i + 1];
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const doPoll = args.includes("--poll");
