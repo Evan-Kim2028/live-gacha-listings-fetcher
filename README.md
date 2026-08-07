@@ -82,6 +82,7 @@ poll.start();
 | `phygitals` | yes | Soft-fail on outage (no book wipe) |
 | `courtyard` | no | Algolia listings; Polygon |
 | `beezie` | opt-in EVM | `includeBeezie` / `includeEvm` |
+| `beezie-solana` | opt-in | Solana-native (solana.beezie.com); `includeBeezieSolana` |
 | `renaiss` / `dyli` | no | Origin APIs; see NATIVE_SOURCES |
 | `fixture` | tests | Offline |
 

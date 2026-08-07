@@ -3,6 +3,7 @@ import { createCourtyardProvider } from "./courtyard.js";
 import { createFixtureProvider, type FixtureProviderOptions } from "./fixture.js";
 import {
   createBeezieProvider,
+  createBeezieSolanaProvider,
   createDyliProvider,
   createPhygitalsProvider,
   createRenaissProvider,
@@ -26,6 +27,7 @@ export const NATIVE_PROVIDER_IDS = [
   "magiceden",
   "courtyard",
   "beezie",
+  "beezie-solana",
   "renaiss",
   "dyli",
   "phygitals",
@@ -34,8 +36,9 @@ export const NATIVE_PROVIDER_IDS = [
 /**
  * Solana-native multi-source set for radar (default purity).
  * Default: collectorcrypt + magiceden(collector_crypt) + phygitals.
- * Excludes: Courtyard (Polygon), Renaiss, DYLI, and **Beezie** (EVM).
- * Opt into Beezie via createSolanaProviders({ includeBeezie: true }) or { includeEvm: true }.
+ * Excludes: Courtyard (Polygon), Renaiss, DYLI, and **Beezie EVM**.
+ * Beezie has a native Solana marketplace (solana.beezie.com) — opt in via
+ * `{ includeBeezieSolana: true }` (thin live book, cheap full pulls).
  */
 export const SOLANA_PROVIDER_IDS = [
   "collectorcrypt",
@@ -86,6 +89,12 @@ export interface SolanaProvidersOptions {
    * Alias: `includeEvm: true` also enables Beezie for old multi-venue breadth.
    */
   includeBeezie?: boolean;
+  /**
+   * Include Beezie Solana marketplace (solana.beezie.com) — Solana-native,
+   * pokemon category, USDC SellOrders. Thin live book; full pull is cheap.
+   * Default false (default purity set unchanged).
+   */
+  includeBeezieSolana?: boolean;
   /** Same as `includeBeezie` — opt into EVM long-tail (Beezie) for breadth. */
   includeEvm?: boolean;
 }
@@ -110,6 +119,7 @@ export function createDefaultProviders(
       createCollectorCryptProvider(),
       createCourtyardProvider(),
       createBeezieProvider(),
+      createBeezieSolanaProvider(),
       createRenaissProvider(),
       createDyliProvider(),
     ];
@@ -126,8 +136,9 @@ export function createDefaultProviders(
 /**
  * Solana-native marketplace set (default purity).
  * Default: CC (Solana) + ME `collector_crypt` + Phygitals.
- * No Polygon Courtyard, no Renaiss/DYLI, no Beezie (EVM).
- * Opt into Beezie: `{ includeBeezie: true }` or `{ includeEvm: true }`.
+ * No Polygon Courtyard, no Renaiss/DYLI, no Beezie EVM.
+ * Opt into EVM Beezie: `{ includeBeezie: true }` / `{ includeEvm: true }`.
+ * Opt into Beezie Solana (native): `{ includeBeezieSolana: true }`.
  * Use with MultiSourceRadar.syncAll (per-provider soft-fail via allSettled).
  */
 export function createSolanaProviders(
@@ -146,6 +157,9 @@ export function createSolanaProviders(
     // Beezie after ME, before Phygitals — matches former default order
     out.splice(2, 0, createBeezieProvider());
   }
+  if (opts.includeBeezieSolana) {
+    out.splice(3, 0, createBeezieSolanaProvider());
+  }
   return out;
 }
 
@@ -159,6 +173,7 @@ export function registerBuiltins(opts?: {
   registerProvider("magiceden", () => createMagicEdenProvider());
   registerProvider("courtyard", () => createCourtyardProvider());
   registerProvider("beezie", () => createBeezieProvider());
+  registerProvider("beezie-solana", () => createBeezieSolanaProvider());
   registerProvider("renaiss", () => createRenaissProvider());
   registerProvider("dyli", () => createDyliProvider());
   registerProvider("phygitals", () => createPhygitalsProvider());

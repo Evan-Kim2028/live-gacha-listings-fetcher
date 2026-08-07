@@ -145,6 +145,7 @@ export {
 export {
   LongtailProvider,
   createBeezieProvider,
+  createBeezieSolanaProvider,
   createRenaissProvider,
   createDyliProvider,
   createPhygitalsProvider,
@@ -158,6 +159,7 @@ export {
   detectAddressChain,
   detectBeezieChain,
   BEEZIE_PAGE_SIZE,
+  BEEZIE_SOLANA_PAGE_SIZE,
   PHYGITALS_MAX_ITEMS_PER_PAGE,
   PHYGITALS_DEFAULT_PAGE_SIZE,
   LONGTAIL_MAX_PAGES_CAP,

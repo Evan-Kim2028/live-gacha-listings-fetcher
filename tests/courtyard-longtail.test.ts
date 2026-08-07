@@ -10,10 +10,12 @@ import {
 } from "../src/providers/courtyard.js";
 import {
   BEEZIE_PAGE_SIZE,
+  BEEZIE_SOLANA_PAGE_SIZE,
   LONGTAIL_MAX_PAGES_CAP,
   PHYGITALS_MAX_ITEMS_PER_PAGE,
   buildPhygitalsParamAttempts,
   createBeezieProvider,
+  createBeezieSolanaProvider,
   createDyliProvider,
   createPhygitalsProvider,
   createRenaissProvider,
@@ -49,6 +51,12 @@ const cyOrderbookFixture = join(
   "courtyard-orderbook-asset.json",
 );
 const bzFixture = join(__dirname, "..", "fixtures", "beezie-sample.json");
+const bzSolanaFixture = join(
+  __dirname,
+  "..",
+  "fixtures",
+  "beezie-solana-sample.json",
+);
 const phyFixture = join(__dirname, "..", "fixtures", "phygitals-sample.json");
 
 describe("Courtyard provider", () => {
@@ -391,6 +399,86 @@ describe("Long-tail scaffolds", () => {
     expect(raw.chain).toBe("evm");
     expect(raw.chainNote).toMatch(/EVM/i);
     expect(p.lastBeezieMeta?.dominantChain).toBe("evm");
+  });
+
+  it("beezie-solana fixture pull works + Solana chain flags + deep link", async () => {
+    const p = createBeezieSolanaProvider();
+    const page = await p.pull({ fixturePath: bzSolanaFixture });
+    expect(page.listings).toHaveLength(2);
+    const L = page.listings[0]!;
+    expect(L.provider).toBe("beezie-solana");
+    expect(L.platform).toBe("beezie-solana");
+    expect(L.market).toBe("Beezie (Solana)");
+    expect(L.price).toBe(38);
+    expect(L.currency).toBe("USDC");
+    expect(L.tokenId).toBe(
+      "9e1a4a53JbqkxJ8zpnrDBFJzMp7eHKVAmJfAr89z84K3",
+    );
+    expect(L.externalUrl).toBe(
+      "https://solana.beezie.com/marketplace/collectible/2016-Evolutions-Charizard-EX-12-PSA-9-9e1a4a53JbqkxJ8zpnrDBFJzMp7eHKVAmJfAr89z84K3",
+    );
+    expect(L.grader).toBe("PSA");
+    expect(L.gradeNum).toBe(9);
+    expect(L.setRaw).toBe("Evolutions");
+    expect(L.cardNumber).toBe("12");
+    expect(L.year).toBe(2016);
+    expect(L.listedAt).toBe("2026-08-07T14:28:27.516Z");
+    const raw = L.raw as { chain?: string };
+    expect(raw.chain).toBe("solana");
+    expect(p.lastBeezieMeta?.dominantChain).toBe("solana");
+    // second listing price
+    expect(page.listings[1]!.price).toBe(78);
+    // provider identity namespace is distinct from EVM beezie
+    expect(L.id.startsWith("beezie-solana:beezie-solana:")).toBe(true);
+  });
+
+  it("beezie-solana request body is 0-based with pageSize + forSale", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      expect(String(input)).toBe(
+        "https://solana-api.beezie.com/dropItems/byCategory",
+      );
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<
+        string,
+        unknown
+      >;
+      bodies.push(body);
+      const page = Number(body.page ?? 0);
+      const pageSize = Number(body.pageSize ?? BEEZIE_SOLANA_PAGE_SIZE);
+      const dropItems = Array.from({ length: pageSize }, (_, i) => ({
+        id: page * pageSize + i + 1,
+        tokenId: `Mint${page * pageSize + i + 1}`,
+        owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+        creatorAddress: "DVNnFArZavoagFdyHyEYH9gmRRoma2vLW5dsy8Y2q9WR",
+        metadata: { name: `Card ${page * pageSize + i + 1}`, attributes: [] },
+        SellOrder: { amountUSDC: "10.00", createdAt: 1 },
+      }));
+      return new Response(
+        JSON.stringify({ dropItems, total: 250 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+    });
+    const page = await p.pullAll({ limit: 250 });
+    expect(bodies.map((b) => String(b.page))).toEqual(["0", "1", "2"]);
+    expect(bodies[0]).toMatchObject({
+      categoryId: "1",
+      saleStatus: "forSale",
+      sellOrderDateOrder: "DESC",
+      pageSize: "100",
+    });
+    expect(page.listings).toHaveLength(250);
+    expect(new Set(page.listings.map((l) => l.id)).size).toBe(250);
+    expect(page.hasMore).toBe(false);
+    expect(p.lastError).toBeNull();
+    // walk stopped at last fetched 0-based page (client limit cut it short)
+    expect(p.lastBeezieMeta?.page).toBe(2);
   });
 
   it("longtail sets contentFingerprint; fingerprint short-circuits syncOnce", async () => {

@@ -1,13 +1,17 @@
 /**
- * Long-tail marketplace providers: Beezie, Renaiss, DYLI, Phygitals.
+ * Long-tail marketplace providers: Beezie, Beezie Solana, Renaiss, DYLI, Phygitals.
  *
- * Beezie chain: live owners/creators are EVM `0x` addresses (Seaport-style
+ * Beezie (EVM): live owners/creators are EVM `0x` addresses (Seaport-style
  * SellOrder), not Solana. Provider stays registered for inventory; normalize
  * flags `chain` on market + raw so Solana radar consumers can filter.
+ *
+ * Beezie Solana: same Hono API shape on `solana-api.beezie.com` (Solana mints,
+ * USDC SellOrder). Site: solana.beezie.com/marketplace/pokemon.
  */
 import { readFile } from "node:fs/promises";
 import { contentFingerprint } from "../contentFingerprint.js";
 import {
+  beezieSolanaListingUrl,
   dyliListingUrl,
   originProvidedUrl,
   phygitalsListingUrl,
@@ -28,7 +32,7 @@ import {
 import type { Listing } from "../types.js";
 import type { ListingsProvider, PullPage, PullQuery } from "./types.js";
 
-export type LongtailId = "beezie" | "renaiss" | "dyli" | "phygitals";
+export type LongtailId = "beezie" | "beezie-solana" | "renaiss" | "dyli" | "phygitals";
 
 /** Detected settlement chain from address shape. */
 export type BeezieChain = "evm" | "solana" | "unknown";
@@ -79,6 +83,15 @@ const DEFAULTS: Record<
       "POST /dropItems/byCategory {filters, saleStatus, sort, page, categoryId}; " +
       "page size ~20 fixed; pullAll multi-page bootstrap (maxPages cap 50); " +
       "owners/creators are EVM 0x (not Solana) — flagged on listing.market/raw.chain",
+  },
+  "beezie-solana": {
+    baseUrl: "https://solana-api.beezie.com",
+    listingPath: "/dropItems/byCategory",
+    note:
+      "POST /dropItems/byCategory {filters, saleStatus, page (0-based), pageSize, " +
+      "sellOrderDateOrder, categoryId}; pageSize up to 100; saleStatus=forSale = " +
+      "active SellOrder only; Solana mints + USDC; buyback/claw endpoints exist " +
+      "(GET /claw/minimal, /claw/buyback-offers/:username) for bid-side later",
   },
   renaiss: {
     baseUrl: "https://www.renaiss.xyz",
@@ -456,8 +469,11 @@ export function normalizeLongtailRow(
     const phy = normalizePhygitalsRow(row, providerId === "phygitals" ? "phygitals" : providerId);
     if (phy) return phy;
   }
-  // Beezie live shape
-  if (providerId === "beezie" && (row.SellOrder || row.metadata)) {
+  // Beezie live shape (EVM + Solana variants share row shape)
+  if (
+    (providerId === "beezie" || providerId === "beezie-solana") &&
+    (row.SellOrder || row.metadata)
+  ) {
     return normalizeBeezieRow(row, providerId);
   }
   // Renaiss live shape
@@ -541,9 +557,9 @@ export function normalizeBeezieRow(
       ? { ...row, chain, chainNote }
       : { chain, chainNote, origin: row };
   return {
-    id: listingId({ provider: providerId, platform: "beezie", nativeId }),
+    id: listingId({ provider: providerId, platform: providerId, nativeId }),
     provider: providerId,
-    platform: "beezie",
+    platform: providerId,
     nativeId,
     tokenId: row.tokenId != null ? String(row.tokenId) : null,
     name: meta.name ?? nativeId,
@@ -555,7 +571,12 @@ export function normalizeBeezieRow(
     seller: typeof row.owner === "string" ? row.owner : null,
     // Beezie: no verified stable public item path from id/tokenId (category
     // browse only). Leave null unless origin supplies http(s) URL fields.
-    externalUrl: originProvidedUrl(row),
+    // Solana variant: site collectible route /marketplace/collectible/{slug}-{mint}.
+    externalUrl:
+      originProvidedUrl(row) ??
+      (providerId === "beezie-solana"
+        ? beezieSolanaListingUrl(meta.name, row.tokenId != null ? String(row.tokenId) : null)
+        : null),
     imageUrl: meta.image ?? null,
     listedAt:
       sell.createdAt != null ? new Date(Number(sell.createdAt)).toISOString() : null,
@@ -720,6 +741,8 @@ function extractRows(body: unknown): Record<string, unknown>[] {
  * - Both: hard page ceiling so cold pulls never run unbounded.
  */
 export const BEEZIE_PAGE_SIZE = 20;
+/** Beezie Solana page size — API accepts up to 100 (verified live). */
+export const BEEZIE_SOLANA_PAGE_SIZE = 100;
 export const PHYGITALS_MAX_ITEMS_PER_PAGE = 200;
 export const PHYGITALS_DEFAULT_PAGE_SIZE = 24;
 /**
@@ -801,7 +824,7 @@ export class LongtailProvider implements ListingsProvider {
         .map((r) => normalizeLongtailRow(r, this.id, this.platform))
         .filter((x): x is Listing => x != null)
         .slice(0, query.limit ?? 100);
-      if (this.id === "beezie") {
+      if (this.id === "beezie" || this.id === "beezie-solana") {
         const counts = emptyChainCounts();
         for (const l of listings) {
           const raw = l.raw as { chain?: BeezieChain } | undefined;
@@ -825,6 +848,7 @@ export class LongtailProvider implements ListingsProvider {
     }
 
     if (this.id === "beezie") return this.pullBeezie(query);
+    if (this.id === "beezie-solana") return this.pullBeezie(query);
     if (this.id === "renaiss") return this.pullRenaiss(query);
     if (this.id === "dyli") return this.pullDyli(query);
     return this.pullPhygitals(query);
@@ -845,7 +869,7 @@ export class LongtailProvider implements ListingsProvider {
     if (query.fixturePath || query.offline) {
       return this.pull(query);
     }
-    if (this.id === "beezie") {
+    if (this.id === "beezie" || this.id === "beezie-solana") {
       return this.pullBeeziePages(query);
     }
     if (this.id === "phygitals") {
@@ -867,7 +891,11 @@ export class LongtailProvider implements ListingsProvider {
     if (query.fixturePath || query.offline) {
       return this.pull(query);
     }
-    if (this.id !== "beezie" && this.id !== "phygitals") {
+    if (
+      this.id !== "beezie" &&
+      this.id !== "beezie-solana" &&
+      this.id !== "phygitals"
+    ) {
       return this.pull(query);
     }
 
@@ -875,9 +903,11 @@ export class LongtailProvider implements ListingsProvider {
     const hasExplicitMaxPages =
       query.maxPages != null && Number.isFinite(query.maxPages);
     const pageSize =
-      this.id === "beezie"
-        ? BEEZIE_PAGE_SIZE
-        : Math.min(
+      this.id === "beezie-solana"
+        ? BEEZIE_SOLANA_PAGE_SIZE
+        : this.id === "beezie"
+          ? BEEZIE_PAGE_SIZE
+          : Math.min(
             Math.max(
               query.limit != null && query.limit > 0
                 ? Math.floor(query.limit)
@@ -930,10 +960,12 @@ export class LongtailProvider implements ListingsProvider {
     return page;
   }
 
-  /** Beezie page walk: fixed {@link BEEZIE_PAGE_SIZE}, 1-based API pages. */
+  /** Beezie page walk: fixed page size, API pages 1-based (EVM) / 0-based (Solana). */
   private async pullBeeziePages(
     query: PullQuery & { maxPages?: number },
   ): Promise<PullPage> {
+    const pageSize =
+      this.id === "beezie-solana" ? BEEZIE_SOLANA_PAGE_SIZE : BEEZIE_PAGE_SIZE;
     const maxPages = Math.max(
       1,
       Math.min(
@@ -944,20 +976,22 @@ export class LongtailProvider implements ListingsProvider {
     const clientLimit = query.limit;
     const all: Listing[] = [];
     const counts = emptyChainCounts();
-    let page = 1;
+    const solana = this.id === "beezie-solana";
+    let page = solana ? 0 : 1;
     let total: number | null = null;
-    let lastPageSize = BEEZIE_PAGE_SIZE;
+    let lastPageSize = pageSize;
     let hasMore = false;
     let partialError: string | null = null;
 
-    for (; page <= maxPages; page++) {
+    // EVM pages are 1-based (inclusive cap maxPages); Solana 0-based (exclusive cap)
+    for (; page < (solana ? maxPages : maxPages + 1); page++) {
       try {
         const one = await this.pullBeezie({
           ...query,
-          offset: (page - 1) * BEEZIE_PAGE_SIZE,
+          offset: solana ? page * pageSize : (page - 1) * pageSize,
           limit: undefined, // API ignores limit; fixed page size
         });
-        lastPageSize = one.listings.length || BEEZIE_PAGE_SIZE;
+        lastPageSize = one.listings.length || pageSize;
         if (one.meta.total != null) total = one.meta.total;
         for (const l of one.listings) {
           all.push(l);
@@ -1124,6 +1158,13 @@ export class LongtailProvider implements ListingsProvider {
   }
 
   private beeziePageFromQuery(query: PullQuery): number {
+    if (this.id === "beezie-solana") {
+      // Solana API is 0-based: page = floor(offset / pageSize)
+      if (query.offset != null && query.offset > 0) {
+        return Math.floor(query.offset / BEEZIE_SOLANA_PAGE_SIZE);
+      }
+      return 0;
+    }
     if (query.offset != null && query.offset > 0) {
       return Math.floor(query.offset / BEEZIE_PAGE_SIZE) + 1;
     }
@@ -1236,15 +1277,29 @@ export class LongtailProvider implements ListingsProvider {
       this.baseUrl.endsWith("/") ? this.baseUrl : this.baseUrl + "/",
     );
     const page = this.beeziePageFromQuery(query);
-    const body = {
-      filters: [] as unknown[],
-      saleStatus: "forSale",
-      sort: query.sort === "price" ? "priceAsc" : "recent",
-      page: String(page),
-      categoryId: this.beezieCategoryId,
-      // API currently ignores limit and returns ~20; still send for future compat
-      limit: String(query.limit ?? BEEZIE_PAGE_SIZE),
-    };
+    const solana = this.id === "beezie-solana";
+    const body = solana
+      ? {
+          filters: [] as unknown[],
+          saleStatus: "forSale",
+          page: String(page),
+          pageSize: String(query.limit ?? BEEZIE_SOLANA_PAGE_SIZE),
+          categoryId: this.beezieCategoryId,
+          // Sort: default = recently listed; price sort = priceOrder.
+          // (Site also supports fmvOrder; not needed for radar pulls.)
+          ...(query.sort === "price"
+            ? { priceOrder: "ASC" }
+            : { sellOrderDateOrder: "DESC" }),
+        }
+      : {
+          filters: [] as unknown[],
+          saleStatus: "forSale",
+          sort: query.sort === "price" ? "priceAsc" : "recent",
+          page: String(page),
+          categoryId: this.beezieCategoryId,
+          // API currently ignores limit and returns ~20; still send for future compat
+          limit: String(query.limit ?? BEEZIE_PAGE_SIZE),
+        };
     const json = await this.fetchBeezieJson(url.toString(), body);
     const rows = json.dropItems ?? [];
     const listings = rows
@@ -1259,11 +1314,15 @@ export class LongtailProvider implements ListingsProvider {
       counts[c] = (counts[c] ?? 0) + 1;
     }
     const total = json.total ?? null;
-    const pageSize = rows.length || BEEZIE_PAGE_SIZE;
+    const pageSize = rows.length || (solana ? BEEZIE_SOLANA_PAGE_SIZE : BEEZIE_PAGE_SIZE);
+    // EVM pages are 1-based (page*size < total); Solana pages are 0-based
+    // ((page+1)*size < total).
     const hasMore =
       total != null
-        ? page * pageSize < total
-        : rows.length >= BEEZIE_PAGE_SIZE;
+        ? solana
+          ? (page + 1) * pageSize < total
+          : page * pageSize < total
+        : rows.length >= pageSize;
     this.lastBeezieMeta = {
       page,
       pageSize,
@@ -1458,6 +1517,16 @@ export function createBeezieProvider(
   opts: Omit<LongtailOptions, "id"> = {},
 ): LongtailProvider {
   return new LongtailProvider({ ...opts, id: "beezie" });
+}
+/**
+ * Beezie **Solana** marketplace (solana.beezie.com, API solana-api.beezie.com).
+ * Solana mints + USDC SellOrders; pokemon = categoryId "1".
+ * Live market is thin (verified ~2 active listings, 2026-08) — pulls are cheap.
+ */
+export function createBeezieSolanaProvider(
+  opts: Omit<LongtailOptions, "id"> = {},
+): LongtailProvider {
+  return new LongtailProvider({ ...opts, id: "beezie-solana" });
 }
 export function createRenaissProvider(
   opts: Omit<LongtailOptions, "id"> = {},
