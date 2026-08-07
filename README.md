@@ -73,6 +73,30 @@ const poll = new PollEngine({
 poll.start();
 ```
 
+## Card lookup & history (programmatic surface)
+
+```bash
+# Live point lookup of one token across venues with a per-token API
+# (Beezie Base/Solana getByTokenId, Courtyard orderbook/assets):
+# current listing, price, FMV, first-listed, deep-link; --bids adds
+# CC getCardOffers + Courtyard per-asset orderbook depth.
+npx tsx src/cli.ts card <tokenId> --bids
+
+# Durable price/lifetime history (SQLite, zero deps). Feed it from any poll:
+npx tsx src/cli.ts poll --solana --courtyard --seconds 3600 --history data/history.db
+
+# Then query per-token history: first seen, price range, reprice count,
+# delist time, active status, venues; plus the raw event stream.
+npx tsx src/cli.ts history <tokenId> --db data/history.db
+```
+
+Library: `store.lookupByTokenId(tokenId)` (all venues), `provider.getByTokenId?`
+seam, `Listing.firstSeenAt` (stamped on first observation, never re-stamped),
+`HistoryStore` (recordSyncResult / recordDelists / priceHistory / cardLifetime),
+`sameCardListings(tokenId, listings)` for cross-venue identity (tcg+name+
+grader+grade clustering — the same key the orderbook uses to merge asks).
+`OrderbookStore.book()` returns full bid/ask depth levels, not just TOB.
+
 ## Providers
 
 | Id | Default Solana | Notes |

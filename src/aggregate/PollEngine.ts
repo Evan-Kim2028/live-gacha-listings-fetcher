@@ -13,6 +13,7 @@ import {
 import type { OrderbookStore } from "../orderbook/OrderbookStore.js";
 import type { ListingsProvider, PullQuery } from "../providers/types.js";
 import type { ListingStore } from "../store.js";
+import type { HistoryStore } from "../history/HistoryStore.js";
 import { getMetrics } from "../http/metrics.js";
 import { syncOnce, type SyncOptions } from "../sync.js";
 import type { SyncResult } from "../types.js";
@@ -78,6 +79,11 @@ export interface PollEngineOptions {
    */
   logMetrics?: boolean;
   /**
+   * Optional durable price/lifecycle history (SQLite). Records new/reprice
+   * per tick and closed on delists.
+   */
+  history?: HistoryStore;
+  /**
    * Optional book for poll-diff delist: when `result.pruned > 0`,
    * {@link applyDelistsFromSync} clears asks / residual bids (docs/SOLD_TAKEDOWN.md).
    */
@@ -123,6 +129,7 @@ export class PollEngine {
   private readonly logMetrics: boolean;
   private readonly orderbook?: OrderbookStore;
   private readonly capture?: RunCapture;
+  private readonly history?: HistoryStore;
   private readonly onDelist?: (
     events: DelistEvent[],
     result: SyncResult,
@@ -148,6 +155,7 @@ export class PollEngine {
     this.orderbook = opts.orderbook;
     this.capture = opts.capture;
     this.onDelist = opts.onDelist;
+    this.history = opts.history;
   }
 
   /** Decision filter plus transport extras for a pull. */
@@ -277,8 +285,10 @@ export class PollEngine {
       );
       if (delists.length > 0) {
         this.onDelist?.(delists, result);
+        this.history?.recordDelists(delists);
       }
     }
+    this.history?.recordSyncResult(result);
     this.onSync?.(providerId, result);
     if (this.logMetrics) {
       const m = getMetrics()[providerId];

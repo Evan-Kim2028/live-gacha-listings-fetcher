@@ -1,5 +1,5 @@
 import { listingId } from "./identity.js";
-import { withLastSeenAt } from "./listingAge.js";
+import { withFirstSeenAt, withLastSeenAt } from "./listingAge.js";
 import { scopeKey } from "./querySignature.js";
 import type {
   CanonicalCard,
@@ -67,6 +67,9 @@ export function trimListing(listing: Listing): Listing {
   if (listing.lastSeenAt !== undefined) {
     out.lastSeenAt = listing.lastSeenAt;
   }
+  if (listing.firstSeenAt !== undefined) {
+    out.firstSeenAt = listing.firstSeenAt;
+  }
   return out;
 }
 
@@ -98,6 +101,18 @@ export class ListingStore {
 
   get(id: string): Listing | undefined {
     return this.byId.get(id);
+  }
+
+  /**
+   * All active listings for a token/mint id (any venue, any scope).
+   * Same physical card may appear on several venues with distinct ids.
+   */
+  lookupByTokenId(tokenId: string): Listing[] {
+    const out: Listing[] = [];
+    for (const l of this.byId.values()) {
+      if (l.tokenId === tokenId) out.push(l);
+    }
+    return out;
   }
 
   /** All active listings (optionally filter by provider). */
@@ -233,7 +248,7 @@ export class ListingStore {
         this.byId.set(listing.id, listing);
         continue;
       }
-      this.byId.set(listing.id, listing);
+      this.byId.set(listing.id, withFirstSeenAt(listing, at, prev));
       upserted += 1;
     }
     return { upserted, unchanged, pruned: 0, prunedIds: [], total: this.byId.size };
@@ -272,11 +287,14 @@ export class ListingStore {
         unchanged += 1;
         // Always refresh lastSeenAt on re-observe (apply confirmation).
         this.byId.set(listing.id, {
-          ...listing,
+          ...withFirstSeenAt(listing, at, prev),
           lastSeenAt: at,
         });
       } else {
-        this.byId.set(listing.id, { ...listing, lastSeenAt: at });
+        this.byId.set(
+          listing.id,
+          withFirstSeenAt({ ...listing, lastSeenAt: at }, at, prev),
+        );
         upserted += 1;
       }
       let scopes = this.idScopes.get(listing.id);
@@ -355,7 +373,7 @@ export class ListingStore {
     };
     const prev = this.byId.get(listing.id);
     const changed = !(prev && listingsEqual(prev, row));
-    this.byId.set(listing.id, row);
+    this.byId.set(listing.id, withFirstSeenAt(row, at, prev));
 
     if (scope) {
       const key = scopeKey(scope.provider, scope.querySignature ?? "");

@@ -93,6 +93,14 @@ export interface ListingsProvider {
   pull(query?: PullQuery): Promise<PullPage>;
 
   /**
+   * Optional point lookup of a single token/mint: current listing (or null
+   * when the token is unknown / not listed / 404). Implemented by venues
+   * with a public per-token endpoint (Beezie getByTokenId, Courtyard
+   * Algolia object fetch). Used by `traded-listings card <tokenId>`.
+   */
+  getByTokenId?(tokenId: string): Promise<Listing | null>;
+
+  /**
    * Optional multi-page pull. syncOnce prefers this when present;
    * otherwise uses pull(offset).
    */
