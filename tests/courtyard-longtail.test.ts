@@ -85,6 +85,121 @@ describe("Courtyard provider", () => {
     }
   });
 
+  function algoliaMock(hitsPerPage: number, totalHits: number, failPages?: Set<number>) {
+    return async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        requests?: Array<{ page?: number }>;
+      };
+      const page = body.requests?.[0]?.page ?? 0;
+      if (failPages?.has(page)) throw new Error(`mock 500 page ${page}`);
+      const start = page * hitsPerPage;
+      const n = Math.max(0, Math.min(hitsPerPage, totalHits - start));
+      const hits = Array.from({ length: n }, (_, i) => ({
+        proofOfIntegrity: `mint-${start + i}`,
+        title: `Card ${start + i}`,
+        price: { currency: "USDC", amountUsd: 10 + i },
+        listedAt: "2026-08-07T00:00:00Z",
+        metadata: { Category: "Pokémon" },
+      }));
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              hits,
+              nbHits: totalHits,
+              nbPages: Math.ceil(totalHits / hitsPerPage),
+              page,
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+  }
+
+  it("pullAll walks the full retrievable book and reports hasMore=false", async () => {
+    const p = createCourtyardProvider({
+      fetchImpl: algoliaMock(100, 250) as typeof fetch,
+      maxRetries: 0,
+    });
+    const page = await p.pullAll({ tcg: "pokemon" });
+    expect(page.listings).toHaveLength(250);
+    expect(page.hasMore).toBe(false);
+    expect(page.meta.total).toBe(250);
+    expect(new Set(page.listings.map((l) => l.id)).size).toBe(250);
+    expect(p.lastError).toBeNull();
+  });
+
+  it("pullAll stops on an empty page (Algolia deep-pagination cap)", async () => {
+    // API returns hits only for pages 0..1, then an empty page
+    const fetchImpl = async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        requests?: Array<{ page?: number }>;
+      };
+      const page = body.requests?.[0]?.page ?? 0;
+      const hits =
+        page < 2
+          ? Array.from({ length: 100 }, (_, i) => ({
+              proofOfIntegrity: `cap-${page * 100 + i}`,
+              title: `Card ${page * 100 + i}`,
+              price: { currency: "USDC", amountUsd: 5 },
+              listedAt: "2026-08-07T00:00:00Z",
+              metadata: { Category: "Pokémon" },
+            }))
+          : [];
+      return new Response(
+        JSON.stringify({
+          results: [{ hits, nbHits: 218947, nbPages: page < 2 ? 2189 : 0, page }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createCourtyardProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    const page = await p.pullAll({ tcg: "pokemon" });
+    expect(page.listings).toHaveLength(200);
+    expect(page.hasMore).toBe(false); // cap reached — walk is complete
+    expect(page.meta.total).toBe(200); // honest retrievable book, not nbHits
+  });
+
+  it("pullAll honors client limit and reports hasMore=true", async () => {
+    const p = createCourtyardProvider({
+      fetchImpl: algoliaMock(100, 250) as typeof fetch,
+      maxRetries: 0,
+    });
+    const page = await p.pullAll({ tcg: "pokemon", limit: 130 });
+    expect(page.listings).toHaveLength(130);
+    expect(page.hasMore).toBe(true);
+  });
+
+  it("pullAll soft-fails empty (no rows, lastError, no prune signal)", async () => {
+    const p = createCourtyardProvider({
+      fetchImpl: algoliaMock(100, 250, new Set([0])) as typeof fetch,
+      maxRetries: 0,
+    });
+    const page = await p.pullAll({ tcg: "pokemon" });
+    expect(page.listings).toHaveLength(0);
+    expect(page.hasMore).toBe(false);
+    expect(page.meta.builtAt).toBeNull();
+    expect(p.lastError).toMatch(/soft-fail/);
+  });
+
+  it("pullAll partial mid-walk failure keeps prior rows + lastError", async () => {
+    const p = createCourtyardProvider({
+      fetchImpl: algoliaMock(100, 250, new Set([1])) as typeof fetch,
+      maxRetries: 0,
+    });
+    const page = await p.pullAll({ tcg: "pokemon" });
+    expect(page.listings).toHaveLength(100);
+    expect(page.hasMore).toBe(true); // incomplete — callers must not prune
+    expect(p.lastError).toMatch(/partial multi-page/);
+  });
+
   it.skipIf(!runLive)("live Algolia pull (Courtyard marketplace index)", async () => {
     const p = createCourtyardProvider();
     try {
