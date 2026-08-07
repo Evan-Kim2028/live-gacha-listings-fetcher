@@ -76,6 +76,11 @@ export interface DefaultProvidersOptions {
   /** Include Courtyard Algolia feed (default false for minimal path). */
   courtyard?: boolean;
   /**
+   * Beezie venues walk **all** categories instead of only Pokémon.
+   * Pair with a tcg-less filter (`--tcg all`).
+   */
+  beezieAllCategories?: boolean;
+  /**
    * Full multi-source set: CC + Courtyard + Beezie + Renaiss + DYLI
    * (+ Magic Eden unless `magiceden: false`).
    */
@@ -134,6 +139,10 @@ export function createDefaultProviders(
       createRenaissProvider(),
       createDyliProvider(),
     ];
+    if (opts.beezieAllCategories) {
+      out[2] = createBeezieProvider({ allBeezieCategories: true });
+      out[3] = createBeezieSolanaProvider({ allBeezieCategories: true });
+    }
     if (includeMe) out.splice(1, 0, createMagicEdenProvider(meOpts));
     return out;
   }

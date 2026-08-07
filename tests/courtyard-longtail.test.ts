@@ -27,6 +27,7 @@ import {
   phygitalsPriceToUsd,
 } from "../src/providers/longtail.js";
 import { ListingStore } from "../src/store.js";
+import { querySignature } from "../src/querySignature.js";
 import { syncOnce } from "../src/sync.js";
 import { listProviders } from "../src/providers/registry.js";
 import { MultiSourceRadar } from "../src/aggregate/MultiSourceRadar.js";
@@ -602,7 +603,72 @@ describe("Long-tail scaffolds", () => {
     expect(p.lastError).toBeNull();
   });
 
-  it("beezie allBeezieCategories partial category failure is incomplete (no prune)", async () => {
+  it("beezie allBeezieCategories legit-empty categories do not poison the walk", async () => {
+    // Live regression (2026-08-07): 16/19 categories have 0 forSale items and
+    // answer 200 + empty. They must count as empty categories, not failures —
+    // otherwise the walk is permanently incomplete and the scope never prunes.
+    const seen: string[] = [];
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (String(input).endsWith("/dropItems/categories")) {
+        return new Response(
+          JSON.stringify([
+            { id: 1, name: "Pokémon", enabled: true },
+            { id: 2, name: "Basketball", enabled: true },
+            { id: 3, name: "Sneakers", enabled: true },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        categoryId?: string;
+        page?: string;
+      };
+      const cat = String(body.categoryId);
+      seen.push(cat);
+      if (cat !== "1") {
+        // Legit empty: 200 + 0 rows + total 0
+        return new Response(
+          JSON.stringify({ dropItems: [], total: 0 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const page = Number(body.page ?? 0);
+      const dropItems =
+        page === 0
+          ? [
+              {
+                id: 1,
+                tokenId: "mint-1",
+                owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+                metadata: { name: "Cat1" },
+                SellOrder: { amountUSDC: "5.00", createdAt: 1 },
+              },
+            ]
+          : [];
+      return new Response(
+        JSON.stringify({ dropItems, total: 1 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+      allBeezieCategories: true,
+    });
+    const page = await p.pullAll({});
+    expect(seen).toEqual(["1", "2", "3"]); // every category walked
+    expect(page.listings).toHaveLength(1);
+    expect(page.hasMore).toBe(false); // walk completes despite empty cats
+    expect(p.lastError).toBeNull();
+  });
+
+  it("beezie allBeezieCategories hard category failure marks the walk incomplete", async () => {
+    // Category 2 throws: tri-state now distinguishes this from a legit-empty
+    // category — a hard failure marks the whole walk incomplete so sync never
+    // prunes the beezie scope over one broken category.
     const fetchImpl = async (
       input: RequestInfo | URL,
       init?: RequestInit,
@@ -1317,4 +1383,157 @@ describe("Long-tail scaffolds", () => {
       radar.store.size("collectorcrypt") + radar.store.size("courtyard"),
     );
   }, 30_000);
+});
+
+describe("Adversarial: empty-complete-page must not wipe the scope", () => {
+  it("courtyard pullAll first-page-empty (200, 0 hits) is a soft-fail, not a wipe", async () => {
+    // Seed a book via a normal walk, then serve a transient empty page.
+    let mode: "ok" | "empty" = "ok";
+    const fetchImpl = async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        requests?: Array<{ page?: number }>;
+      };
+      const page = body.requests?.[0]?.page ?? 0;
+      if (mode === "empty") {
+        return new Response(
+          JSON.stringify({ results: [{ hits: [], nbHits: 0, nbPages: 0, page }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const hits = Array.from({ length: 100 }, (_, i) => ({
+        proofOfIntegrity: `mint-${page * 100 + i}`,
+        title: `Card ${page * 100 + i}`,
+        price: { currency: "USDC", amountUsd: 10 },
+        listedAt: "2026-08-07T00:00:00Z",
+        metadata: { Category: "Pokémon" },
+      }));
+      return new Response(
+        JSON.stringify({ results: [{ hits, nbHits: 200, nbPages: 2, page }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createCourtyardProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    const store = new ListingStore();
+    await syncOnce(store, p, { shortCircuitOnBuiltAt: false, bootstrap: true });
+    expect(store.size("courtyard")).toBe(200);
+
+    mode = "empty"; // transient Algolia hiccup: 200 with zero hits
+    const r = await syncOnce(store, p, { shortCircuitOnBuiltAt: false });
+    // Scope must survive a transient empty: no prune, no wipe.
+    expect(r.pruned).toBe(0);
+    expect(r.activeCount).toBe(200);
+    expect(store.size("courtyard")).toBe(200);
+    expect(p.lastError).toMatch(/empty|soft/i);
+  });
+
+  it("courtyard pullAll truncated-by-cap walk still prunes delists (cap is not a failure)", async () => {
+    // Book shrinks 200 → 190 (5% left the retrievable set — real delist,
+    // below the mass-drop guard threshold).
+    let mode: "full" | "shrunk" = "full";
+    const fetchImpl = async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        requests?: Array<{ page?: number }>;
+      };
+      const page = body.requests?.[0]?.page ?? 0;
+      const total = mode === "full" ? 200 : 190;
+      const perPage = mode === "full" ? 100 : page === 0 ? 95 : 95;
+      const hits = Array.from({ length: perPage }, (_, i) => ({
+        proofOfIntegrity: `mint-${page * 100 + i}`,
+        title: `Card ${page * 100 + i}`,
+        price: { currency: "USDC", amountUsd: 10 },
+        listedAt: "2026-08-07T00:00:00Z",
+        metadata: { Category: "Pokémon" },
+      }));
+      return new Response(
+        JSON.stringify({ results: [{ hits, nbHits: total, nbPages: Math.ceil(total / 100), page }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createCourtyardProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    const store = new ListingStore();
+    await syncOnce(store, p, { shortCircuitOnBuiltAt: false, bootstrap: true });
+    expect(store.size("courtyard")).toBe(200);
+    mode = "shrunk";
+    const r = await syncOnce(store, p, { shortCircuitOnBuiltAt: false });
+    expect(r.pruned).toBe(10);
+    expect(store.size("courtyard")).toBe(190);
+  });
+});
+
+describe("Adversarial: scope coexistence", () => {
+  it("pokemon scope and all-categories scope coexist in one store", async () => {
+    // Mock: category 1 = 3 rows, category 2 = 2 rows.
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (String(input).endsWith("/dropItems/categories")) {
+        return new Response(
+          JSON.stringify([
+            { id: 1, name: "Pokémon", enabled: true },
+            { id: 2, name: "One Piece", enabled: true },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        categoryId?: string;
+        page?: string;
+      };
+      const cat = Number(body.categoryId ?? 1);
+      const page = Number(body.page ?? 0);
+      const rows = cat === 1 ? 3 : 2;
+      const dropItems =
+        page === 0
+          ? Array.from({ length: rows }, (_, i) => ({
+              id: cat * 100 + i,
+              tokenId: `mint-${cat}-${i}`,
+              owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+              metadata: {
+                name: `Cat${cat} Card ${i}`,
+                attributes: [
+                  {
+                    trait_type: "Category",
+                    trait_value: cat === 1 ? "Pokemon" : "One Piece",
+                  },
+                ],
+              },
+              SellOrder: { amountUSDC: "10.00", createdAt: 1 },
+            }))
+          : [];
+      return new Response(
+        JSON.stringify({ dropItems, total: rows }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const store = new ListingStore();
+    // Scope A: pokemon-only (single category)
+    const pa = createBeezieSolanaProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    await syncOnce(store, pa, { tcg: "pokemon", shortCircuitOnBuiltAt: false, bootstrap: true });
+    expect(store.size("beezie-solana")).toBe(3);
+    // Scope B: all categories (same provider class, different provider instance)
+    const pb = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+      allBeezieCategories: true,
+    });
+    await syncOnce(store, pb, { shortCircuitOnBuiltAt: false, bootstrap: true });
+    // Unique listings = 5 (cat1 rows are the same identities in both scopes)
+    expect(store.size("beezie-solana")).toBe(5);
+    // Scope membership is separate: pokemon scope still has its 3 rows,
+    // all-categories scope has 5.
+    const qsigA = querySignature({ tcg: "pokemon" });
+    const qsigB = querySignature({});
+    expect(store.listScope("beezie-solana", qsigA)).toHaveLength(3);
+    expect(store.listScope("beezie-solana", qsigB)).toHaveLength(5);
+    // Pruning scope B (cat 2 delists) must not touch scope A rows
+    const rowsA = store.listScope("beezie-solana", querySignature({ tcg: "pokemon" }));
+    expect(rowsA).toHaveLength(3);
+  });
 });

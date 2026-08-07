@@ -27,6 +27,7 @@ import { courtyardListingUrl, originProvidedUrl } from "../externalUrl.js";
 import { deltaFromListing } from "../fmv/delta.js";
 import { listingId } from "../identity.js";
 import { fetchWithRetry } from "../http/fetchWithRetry.js";
+import { emptyPage, walkSequentialPages } from "./pageWalk.js";
 import {
   DEFAULT_MAX_CONCURRENT,
   DEFAULT_TTL_MS,
@@ -275,63 +276,50 @@ export class CourtyardProvider implements ListingsProvider {
     );
     const pageSize = Math.min(query.limit ?? COURTYARD_PAGE_SIZE, 100);
     const clientLimit = query.limit;
-    const all: Listing[] = [];
-    let offset = 0;
-    let total: number | null = null;
-    let hasMore = false;
-    let partialError: string | null = null;
-    for (let page = 0; page < maxPages; page++) {
-      try {
+    const walk = await walkSequentialPages(
+      async (offset) => {
         const one = await this.pull({ ...query, offset, limit: pageSize });
-        if (one.listings.length === 0) {
-          // Algolia deep-pagination cap / index end: the walk is complete
-          // relative to what the API will return. Report a finished book so
-          // sync's prune path can delist rows that left the retrievable set.
-          hasMore = false;
-          total = all.length;
-          break;
-        }
-        total = one.meta.total ?? total;
-        all.push(...one.listings);
-        hasMore = one.hasMore;
-        if (!one.hasMore) break;
-        if (clientLimit != null && all.length >= clientLimit) break;
-        offset += pageSize;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (all.length === 0) {
-          this.lastError = `courtyard soft-fail page ${page}: ${msg}`;
-          return {
-            listings: [],
-            hasMore: false,
-            meta: {
-              provider: this.id,
-              builtAt: null,
-              total: 0,
-              universe: 0,
-              fetchedAt: new Date().toISOString(),
-              querySignature: "",
-            },
-          };
-        }
-        partialError = msg;
-        this.lastError = `courtyard partial multi-page after ${all.length} rows (page ${page}): ${msg}`;
-        hasMore = true;
-        break;
-      }
+        return {
+          listings: one.listings,
+          hasMore: one.hasMore,
+          total: one.meta.total ?? null,
+        };
+      },
+      {
+        maxPages,
+        pageSize,
+        firstPage: 0,
+        limit: clientLimit,
+        label: "courtyard",
+      },
+    );
+
+    // Ambiguous empty first page (200 + 0 hits): a transient Algolia hiccup
+    // must NOT look like a completed empty book — sync would
+    // replaceScopeSnapshot and wipe the prior scope. Mark soft.
+    if (walk.firstPageEmpty) {
+      this.lastError = `courtyard empty page 0 (0 hits)${walk.partialError ? `: ${walk.partialError}` : ""} — treated as soft-fail`;
+      return emptyPage(this.id, { softFail: true });
     }
-    if (!partialError) this.lastError = null;
-    const listings = clientLimit != null ? all.slice(0, clientLimit) : all;
+    if (walk.partialError) {
+      this.lastError = `courtyard partial multi-page after ${walk.listings.length} rows: ${walk.partialError}`;
+    } else {
+      this.lastError = null;
+    }
+    const listings =
+      clientLimit != null ? walk.listings.slice(0, clientLimit) : walk.listings;
     return {
       listings,
       hasMore:
-        hasMore &&
-        (clientLimit == null || all.length < (total ?? Infinity)),
+        walk.hasMore &&
+        (clientLimit == null || walk.listings.length < (walk.total ?? Infinity)),
       meta: {
         provider: this.id,
         builtAt: new Date().toISOString(),
-        total: total ?? listings.length,
-        universe: total ?? listings.length,
+        // At the Algolia deep-pagination cap nbHits is inflated beyond what
+        // is retrievable — report the walked rows as the honest book size.
+        total: walk.stoppedAtCap ? walk.listings.length : (walk.total ?? listings.length),
+        universe: walk.stoppedAtCap ? walk.listings.length : (walk.total ?? listings.length),
         fetchedAt: new Date().toISOString(),
         querySignature: "",
       },
