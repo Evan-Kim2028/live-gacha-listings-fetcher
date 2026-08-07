@@ -26,32 +26,35 @@ npx tsx examples/courtyard-e2e-qa.ts --watch 'charizard,umbreon,eevee'
 
 ## Findings
 
-### 1. Retrievable book ≈ 1.8k–3.1k rows and the boundary moves
-Algolia `nbHits` for the pokemon facet is ~219k, but deep pagination returns
-empty pages after ~1.8k–3.1k hits and the cutoff shifts between runs (and the
-index churns ~1–2k rows/day). `pullAll` treats the empty-page stop as a
-complete walk (`hasMore=false`, `total` = rows actually retrieved), so the
-store's scope matches what the API will ever give us. The sync
+### 1. Retrievable book ≈ 1.2k–5k rows and the window moves
+Algolia `nbHits` for the pokemon facet is ~232k, but pagination returns empty
+pages beyond a **5,000-hit ceiling** (verified at 20/48/100 hits-per-page:
+page×size ≥ 5,000 is always empty; the site's 105-page pager × 48 = ~5,040 is
+the same ceiling). The deep range is additionally unstable: the retrievable
+window observed on 2026-08-07 ranged **1,203 → 5,000** rows (index churn + DSN
+edge caching can briefly serve deep pages, then go empty). `pullAll` treats the
+first empty page as the end of the retrievable set (`hasMore=false`, honest
+total), so the store's scope matches what the API will give us. The sync
 `suspiciouslySmall`/`massDrop` guards (≥50% shrink / >10% missing) keep a
-shrunken walk from mass-pruning a prior larger book — verified: run 2 (1,844
-rows) against run 1's 3,076-row book pruned only 6 rows (real churn), not 1,200.
+shrunken window from mass-pruning a prior larger book — verified: a 1,203-row
+walk against a 2,700-row book pruned only real churn, not the difference.
 
 ### 2. Field quality is high
 Name / price / currency / externalUrl / imageUrl / listedAt / tcg / setRaw at
 100%. `year` 99%. Grader+grade 79–84% (the rest are ungraded, sealed packs,
 etc.). No dupes, stable ids (page-0 re-pull returns identical id sets).
 
-### 3. ~2.4% of the book is price-vs-FMV anomalies (cleanup candidates)
-45 rows (of 1,844) priced > 10× their own `estimatedValueUsd` — e.g.:
-- 1999 Team Rocket Dark Dragonite CGC 8.5: $56,850 vs FMV $61.10
-- 2023 Temporal Forces Torterra ex CGC 9: $13,900 vs FMV $14.30
-- Booster packs listed at $3,000–$6,000 vs FMV ~$4–5
-
-These are almost certainly fat-finger / hold-price listings, not real asks.
-They distort price stats (mean $218 vs median $45) and delta (mean +736% vs
-median +4%). Recommendation: when curating, filter `delta` (or price>10×FMV)
-out of trade signals — the fetcher still captures them faithfully; curation
-decides what's tradable.
+### 3. ~1.6–3.4% of the book is price-vs-FMV anomalies (cleanup candidates)
+Rows priced > 10× their own `estimatedValueUsd`. Re-examined 2026-08-07: the
+class is **systematic, not random fat-fingers** — sampled 20 anomalies, 14 were
+sealed booster packs at 700–1,300× FMV (e.g. Battle Partner boosters at
+$3,200–$6,100 vs FMV ~$4.40, same product at multiple prices), 6 graded cards,
+0 chase/anchor cards. Pattern fits deliberate placeholder/hold prices from
+Courtyard's own data pipeline (probably bulk-imported sealed SKUs). They
+distort price stats (mean $218 vs median $45) and delta (mean +736% vs median
++4%). Recommendation: when curating, filter `delta` (or price>10×FMV) out of
+trade signals — the fetcher still captures them faithfully; curation decides
+what's tradable.
 
 ### 4. Delist cleanup works end-to-end
 Warm poll pruned 1–6 rows per tick that left the retrievable set, captured as
