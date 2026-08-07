@@ -290,7 +290,6 @@ export class CourtyardProvider implements ListingsProvider {
         pageSize,
         firstPage: 0,
         limit: clientLimit,
-        label: "courtyard",
       },
     );
 

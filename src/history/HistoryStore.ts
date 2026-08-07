@@ -15,7 +15,8 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import type { DelistEvent } from "../lifecycle/delist.js";
-import type { SyncResult } from "../types.js";
+import { identityFromListing, identityKeyFromListing } from "../cardIdentity.js";
+import type { Listing, SyncResult } from "../types.js";
 
 export type HistoryEventKind = "new" | "reprice" | "closed";
 
@@ -60,6 +61,23 @@ CREATE TABLE IF NOT EXISTS listing_events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_token ON listing_events(token_id, seen_at);
 CREATE INDEX IF NOT EXISTS idx_events_listing ON listing_events(listing_id, seen_at);
+
+CREATE TABLE IF NOT EXISTS card_identities (
+  token_id TEXT PRIMARY KEY,
+  identity_key TEXT NOT NULL,
+  tcg TEXT,
+  name TEXT,
+  set_name TEXT,
+  number TEXT,
+  year INTEGER,
+  language TEXT,
+  variant TEXT,
+  grader TEXT,
+  grade TEXT,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_identities_key ON card_identities(identity_key);
 `;
 
 export class HistoryStore {
@@ -209,6 +227,81 @@ export class HistoryStore {
       provider: r.provider == null ? null : String(r.provider),
       listingId: String(r.listing_id),
     }));
+  }
+
+  /**
+   * Upsert identity mapping for listings (token → cross-venue card identity).
+   * Grade/grader are stored as attributes but NOT part of the identity key.
+   */
+  recordIdentities(
+    listings: Iterable<Listing>,
+    seenAt: string = new Date().toISOString(),
+  ): number {
+    const stmt = this.db.prepare(
+      `INSERT INTO card_identities
+         (token_id, identity_key, tcg, name, set_name, number, year, language, variant, grader, grade, first_seen_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(token_id) DO UPDATE SET
+         identity_key = excluded.identity_key,
+         tcg = excluded.tcg, name = excluded.name, set_name = excluded.set_name,
+         number = excluded.number, year = excluded.year,
+         language = excluded.language, variant = excluded.variant,
+         grader = excluded.grader, grade = excluded.grade,
+         last_seen_at = excluded.last_seen_at`,
+    );
+    const getFirst = this.db.prepare(
+      `SELECT first_seen_at FROM card_identities WHERE token_id = ?`,
+    );
+    let written = 0;
+    for (const l of listings) {
+      if (!l.tokenId) continue;
+      const id = identityFromListing(l);
+      const key = identityKeyFromListing(l);
+      if (!key) continue;
+      const existing = getFirst.get(l.tokenId) as { first_seen_at: string } | undefined;
+      const firstSeen = existing?.first_seen_at ?? seenAt;
+      stmt.run(
+        l.tokenId,
+        key,
+        id.tcg ?? null,
+        id.name ?? null,
+        id.set ?? null,
+        id.number ?? null,
+        id.year ?? null,
+        id.language ?? null,
+        id.variant ?? null,
+        l.grader ?? null,
+        l.grade ?? null,
+        firstSeen,
+        seenAt,
+      );
+      written += 1;
+    }
+    return written;
+  }
+
+  /** Stored identity for a token (or null). */
+  identityByToken(tokenId: string): Record<string, unknown> | null {
+    const row = this.db
+      .prepare(
+        `SELECT identity_key, tcg, name, set_name, number, year, language, variant, grader, grade, first_seen_at, last_seen_at
+         FROM card_identities WHERE token_id = ?`,
+      )
+      .get(tokenId) as Record<string, unknown> | undefined;
+    return row ?? null;
+  }
+
+  /** All token ids sharing the same identity (same physical card, any venue). */
+  siblingsByToken(tokenId: string): Array<Record<string, unknown>> {
+    const self = this.identityByToken(tokenId);
+    if (!self) return [];
+    return this.db
+      .prepare(
+        `SELECT token_id, name, set_name, number, grader, grade, last_seen_at
+         FROM card_identities WHERE identity_key = ? AND token_id != ?
+         ORDER BY last_seen_at DESC`,
+      )
+      .all(String(self.identity_key), tokenId) as Array<Record<string, unknown>>;
   }
 
   /** Row count (tests / ops). */

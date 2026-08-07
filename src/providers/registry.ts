@@ -1,14 +1,10 @@
-import { createCollectorCryptProvider } from "./collectorcrypt.js";
-import { createCourtyardProvider } from "./courtyard.js";
 import { createFixtureProvider, type FixtureProviderOptions } from "./fixture.js";
 import {
-  createBeezieProvider,
-  createBeezieSolanaProvider,
-  createDyliProvider,
-  createPhygitalsProvider,
-  createRenaissProvider,
-} from "./longtail.js";
-import { createMagicEdenProvider, type MagicEdenOptions } from "./magiceden.js";
+  catalogEntry,
+  PROVIDER_CATALOG,
+  type CatalogCreateOpts,
+} from "./catalog.js";
+import type { MagicEdenOptions } from "./magiceden.js";
 import type { ListingsProvider } from "./types.js";
 
 export type ProviderFactory = () => ListingsProvider;
@@ -130,27 +126,29 @@ export function createDefaultProviders(
       ? undefined
       : opts.magiceden;
 
+  const allCategories: CatalogCreateOpts = opts.beezieAllCategories
+    ? { allCategories: true }
+    : {};
   if (opts.all) {
-    const out: ListingsProvider[] = [
-      createCollectorCryptProvider(),
-      createCourtyardProvider(),
-      createBeezieProvider(),
-      createBeezieSolanaProvider(),
-      createRenaissProvider(),
-      createDyliProvider(),
+    const order = [
+      "collectorcrypt",
+      ...(includeMe ? ["magiceden"] : []),
+      "courtyard",
+      "beezie",
+      "beezie-solana",
+      "renaiss",
+      "dyli",
     ];
-    if (opts.beezieAllCategories) {
-      out[2] = createBeezieProvider({ allBeezieCategories: true });
-      out[3] = createBeezieSolanaProvider({ allBeezieCategories: true });
-    }
-    if (includeMe) out.splice(1, 0, createMagicEdenProvider(meOpts));
-    return out;
+    return order.map((id) => {
+      const e = catalogEntry(id)!;
+      return e.create({ ...allCategories, me: meOpts });
+    });
   }
 
-  const out: ListingsProvider[] = [createCollectorCryptProvider()];
-  if (includeMe) out.push(createMagicEdenProvider(meOpts));
-  if (opts.courtyard) out.push(createCourtyardProvider());
-  return out;
+  const minimal: ListingsProvider[] = [catalogEntry("collectorcrypt")!.create()];
+  if (includeMe) minimal.push(catalogEntry("magiceden")!.create({ me: meOpts }));
+  if (opts.courtyard) minimal.push(catalogEntry("courtyard")!.create());
+  return minimal;
 }
 
 /**
@@ -164,39 +162,30 @@ export function createDefaultProviders(
 export function createSolanaProviders(
   opts: SolanaProvidersOptions = {},
 ): ListingsProvider[] {
-  const out: ListingsProvider[] = [
-    // blockchain=Solana is also the CollectorCryptProvider default
-    createCollectorCryptProvider({ blockchain: "Solana" }),
-    createMagicEdenProvider({
-      symbol: "collector_crypt",
-      ...opts.magiceden,
-    }),
-    createPhygitalsProvider(),
+  const allCategories: CatalogCreateOpts = opts.beezieAllCategories
+    ? { allCategories: true }
+    : {};
+  const meOpts = opts.magiceden
+    ? { symbol: "collector_crypt", ...opts.magiceden }
+    : { symbol: "collector_crypt" };
+  // Ordering is contractual (tests assert it). Legacy splice semantics:
+  // beezie inserts before Phygitals; beezie-solana inserts AFTER Phygitals
+  // unless beezie is also included (then it lands before Phygitals).
+  const hasBeezie = opts.includeBeezie || opts.includeEvm;
+  const hasBeezieSolana = Boolean(opts.includeBeezieSolana);
+  const order = [
+    "collectorcrypt",
+    "magiceden",
+    ...(hasBeezie ? ["beezie"] : []),
+    ...(hasBeezie && hasBeezieSolana ? ["beezie-solana"] : []),
+    "phygitals",
+    ...(hasBeezieSolana && !hasBeezie ? ["beezie-solana"] : []),
+    ...(opts.courtyard ? ["courtyard"] : []),
   ];
-  if (opts.includeBeezie || opts.includeEvm) {
-    // Beezie after ME, before Phygitals — matches former default order
-    out.splice(2, 0, createBeezieProvider());
-  }
-  if (opts.includeBeezieSolana) {
-    out.splice(3, 0, createBeezieSolanaProvider());
-  }
-  if (opts.courtyard) {
-    // Courtyard (Polygon) after Phygitals — cross-chain breadth opt-in
-    out.push(createCourtyardProvider());
-  }
-  if (opts.beezieAllCategories) {
-    // Rebuild beezie venues with the all-categories walker
-    const idx = out.findIndex(
-      (p) => p.id === "beezie" || p.id === "beezie-solana",
-    );
-    if (idx >= 0) {
-      const isSolana = out[idx]!.id === "beezie-solana";
-      out[idx] = isSolana
-        ? createBeezieSolanaProvider({ allBeezieCategories: true })
-        : createBeezieProvider({ allBeezieCategories: true });
-    }
-  }
-  return out;
+  return order.map((id) => {
+    const e = catalogEntry(id)!;
+    return e.create({ ...allCategories, me: meOpts });
+  });
 }
 
 /**
@@ -205,14 +194,10 @@ export function createSolanaProviders(
 export function registerBuiltins(opts?: {
   fixture?: FixtureProviderOptions;
 }): void {
-  registerProvider("collectorcrypt", () => createCollectorCryptProvider());
-  registerProvider("magiceden", () => createMagicEdenProvider());
-  registerProvider("courtyard", () => createCourtyardProvider());
-  registerProvider("beezie", () => createBeezieProvider());
-  registerProvider("beezie-solana", () => createBeezieSolanaProvider());
-  registerProvider("renaiss", () => createRenaissProvider());
-  registerProvider("dyli", () => createDyliProvider());
-  registerProvider("phygitals", () => createPhygitalsProvider());
+  // Catalog-driven: every entry registers itself.
+  for (const e of PROVIDER_CATALOG) {
+    registerProvider(e.id, () => e.create());
+  }
   if (opts?.fixture) {
     const fixtureOpts = opts.fixture;
     registerProvider("fixture", () => createFixtureProvider(fixtureOpts));

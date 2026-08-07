@@ -289,6 +289,7 @@ export class PollEngine {
       }
     }
     this.history?.recordSyncResult(result);
+    this.history?.recordIdentities(result.listings);
     this.onSync?.(providerId, result);
     if (this.logMetrics) {
       const m = getMetrics()[providerId];
