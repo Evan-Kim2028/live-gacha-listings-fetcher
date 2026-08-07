@@ -82,13 +82,14 @@ describe("provider registry modularity", () => {
     ]);
   });
 
-  it("createDefaultProviders({ all: true }) is CC+ME+Courtyard+Beezie+Renaiss+DYLI", () => {
+  it("createDefaultProviders({ all: true }) is CC+ME+Courtyard+Beezie+BeezieSolana+Renaiss+DYLI", () => {
     const providers = createDefaultProviders({ all: true });
     expect(providers.map((p) => p.id)).toEqual([
       "collectorcrypt",
       "magiceden",
       "courtyard",
       "beezie",
+      "beezie-solana",
       "renaiss",
       "dyli",
     ]);
@@ -101,6 +102,7 @@ describe("provider registry modularity", () => {
       "collectorcrypt",
       "courtyard",
       "beezie",
+      "beezie-solana",
       "renaiss",
       "dyli",
     ]);
@@ -123,6 +125,23 @@ describe("provider registry modularity", () => {
     expect(providers.some((p) => p.id === "courtyard")).toBe(false);
     expect(providers.some((p) => p.id === "renaiss")).toBe(false);
     expect(providers.some((p) => p.id === "dyli")).toBe(false);
+    // Beezie EVM excluded by default; Solana-native Beezie is opt-in
+    expect(providers.some((p) => p.id === "beezie")).toBe(false);
+    expect(providers.some((p) => p.id === "beezie-solana")).toBe(false);
+  });
+
+  it("createSolanaProviders({ includeBeezieSolana: true }) adds Beezie Solana", () => {
+    expect(
+      createSolanaProviders({ includeBeezieSolana: true }).map((p) => p.id),
+    ).toEqual([
+      "collectorcrypt",
+      "magiceden",
+      "phygitals",
+      "beezie-solana",
+    ]);
+    expect(
+      createSolanaProviders({ includeBeezieSolana: true }).map((p) => p.id),
+    ).not.toContain("beezie");
   });
 
   it("createSolanaProviders({ includeBeezie: true }) or includeEvm adds Beezie", () => {

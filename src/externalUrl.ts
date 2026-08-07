@@ -65,6 +65,30 @@ export function renaissListingUrl(
 }
 
 /**
+ * Beezie Solana collectible page (`/marketplace/collectible/[slug]` Next route).
+ * Site slug = name kebab-cased (case preserved, non-alphanumeric runs become
+ * `-`, e.g. "2016 Evolutions Charizard EX #12 PSA 9" →
+ * "2016-Evolutions-Charizard-EX-12-PSA-9") suffixed with the tokenId mint.
+ * The mint is the stable path key; slug is cosmetic and may change.
+ */
+export function beezieSolanaListingUrl(
+  name: string | null | undefined,
+  tokenId: string | null | undefined,
+): string | null {
+  if (tokenId == null) return null;
+  const t = String(tokenId).trim();
+  if (!t) return null;
+  const slug = String(name ?? "")
+    .trim()
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .join("-");
+  return slug
+    ? `https://solana.beezie.com/marketplace/collectible/${slug}-${t}`
+    : null;
+}
+
+/**
  * DYLI product page (`/p/[slug]` Next route). Product numeric/string `id`
  * works as the path segment when origin does not supply a URL.
  */

@@ -13,6 +13,7 @@ Rebuild multi-venue **radar / listings / bids** from origin marketplaces as a se
 | **Magic Eden** (CC collection) | Yes `GET …/v2/collections/collector_crypt/listings` | Yes sample mints → `…/v2/tokens/{mint}/offers_received` (fallback `/offers`; price SOL) | `MagicEdenBidsProvider` + native `OrderbookFeed` |
 | **Courtyard** | Yes **Algolia** `marketplace_prod_recently_listed` | Yes per-asset `GET /orderbook/assets/{id}` (browser UA); no bulk bid index | `CourtyardProvider` + `CourtyardBidsProvider` |
 | **Beezie** | Yes `POST api.beezie.com/dropItems/byCategory` | **EVM** Seaport / SellOrder (not Solana) | `createBeezieProvider` |
+| **Beezie Solana** | Yes `POST solana-api.beezie.com/dropItems/byCategory` | **Solana** mints, USDC SellOrder; claw buyback endpoints for bid-side | `createBeezieSolanaProvider` |
 | **Renaiss** | Yes tRPC `collectible.list` | `offer.*` needs auth | `createRenaissProvider` |
 | **DYLI** | Yes `GET www.dyli.io/api/explore` | highest_bid / on-chain | `createDyliProvider` |
 | **Phygitals** | Yes docs params (`page`/`itemsPerPage`/`listedStatus`); soft-fail + backoff on outage | claw buyback tx helpers | `createPhygitalsProvider` |
@@ -28,7 +29,8 @@ Beezie/Renaiss/DYLI/… ───┘              │                        │
                                         └─► OrderbookFeed (native asks+bids)
 
 createSolanaProviders()  = [collectorcrypt, magiceden(collector_crypt), phygitals]
-// opt-in Beezie: createSolanaProviders({ includeBeezie: true }) or { includeEvm: true }
+// opt-in EVM Beezie: createSolanaProviders({ includeBeezie: true }) or { includeEvm: true }
+// opt-in Beezie Solana (native): createSolanaProviders({ includeBeezieSolana: true })
 ```
 
 Parallel origin hops usually finish faster than waiting on one aggregator re-scrape.
@@ -49,7 +51,9 @@ CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30
 
 **Opt-in Beezie (old breadth):** `createSolanaProviders({ includeBeezie: true })` or `createSolanaProviders({ includeEvm: true })` inserts `beezie` between ME and Phygitals.
 
-`createDefaultProviders({ all: true })` multi-venue path is unchanged (still includes Beezie among other venues).
+**Opt-in Beezie Solana (native):** `createSolanaProviders({ includeBeezieSolana: true })` appends `beezie-solana` (solana.beezie.com — Solana mints, USDC SellOrders). Live book is thin (~2–20 listings as of 2026-08); full pull is a few cheap POST pages, so it is fine to bootstrap + poll like any native source.
+
+`createDefaultProviders({ all: true })` multi-venue path now includes `beezie-solana` next to EVM `beezie`.
 
 ### Real-time update cadence (no single SSE)
 
@@ -75,6 +79,19 @@ Live `owner` / `creatorAddress` values are **EVM** (`0x` + 40 hex). Catalog is S
   - `listing.raw.chainNote` → short operator note
 - Pull retries on 429/5xx/network. **`pullAll`** (used by `syncOnce`) multi-pages when `limit` needs more than one page; `pullPages({ maxPages })` for explicit walks. Caps: page ~**20** fixed, **`LONGTAIL_MAX_PAGES_CAP` = 50**. Mid-walk failure soft-keeps collected rows; total soft-empty never prunes prior store scope.
 - Filter Solana-only books with `listing.raw.chain !== "evm"` (or drop `provider === "beezie"`).
+
+### Beezie Solana (native, `beezie-solana`)
+
+Site: `solana.beezie.com/marketplace/pokemon` · API: `solana-api.beezie.com` (Hono; no auth, no special headers; Cloudflare DYNAMIC, no cache headers → poll at repo cadence).
+
+- **Listings:** `POST /dropItems/byCategory` body `{ categoryId: "1" (pokemon), page: "0"-based, pageSize: "100" max, filters: [], saleStatus: "forSale", sellOrderDateOrder: "DESC" }` → `{ dropItems: [...], total }`.
+  - `saleStatus: "all"` returns the whole catalog including `SellOrder: null` rows (514 items, 2026-08) — use **`forSale`** to get active listings only.
+  - Row: `tokenId` (mint), `owner`/`creatorAddress` (base58), `metadata.name/image/attributes[]` (`year`, `grader`, `grade`, `language`, `pokemon name`, `set name`, `card number`, `serial`, `card type`, `finish`, `edition`), `SellOrder.amountUSDC` (dollar string) + `SellOrder.createdAt` (ms), `altFmv` (Beezie FMV).
+  - **Filters:** `filters: [{ filterName, value }]` (keys `grader`, `year`, `setName`, `pokemonName`, `cardNumber`, `cardRarity`, `serialNumber`, `language`, `cardType`, `finish`, `edition`; values have `'` escaped — server builds SQL-ish WHERE). Facets: `GET /marketplace/cards/filters/1`.
+  - Delist signal = absence from a complete `forSale` walk (same leave-book discipline as CC). No sold endpoint.
+- **Deep link:** `https://solana.beezie.com/marketplace/collectible/{kebab-name}-{tokenId}` (mint is the stable path key).
+- **Bid-side (future):** claw buyback offers — `GET /claw/minimal` (claw machines, `clawTag` e.g. `beeziesol100`), `GET /claw/buyback-offers/:username?page&pageSize&categoryId` (username = operator username; needs discovery), and `POST /claw/...` actions need auth. Not wired yet.
+- Not in default `createSolanaProviders()`. Opt in with `{ includeBeezieSolana: true }`.
 
 ```ts
 import { MultiSourceRadar, createSolanaProviders } from "traded-listings";
