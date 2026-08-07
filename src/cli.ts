@@ -40,9 +40,9 @@ const BOOTSTRAP_DEFAULT_LIMIT = 50_000;
 function usage(): never {
   console.error(`Usage:
   traded-listings [radar|native] [--solana] [--all] [--beezie] [--tcg pokemon] [--platform cc|me] [--price-min N] [--price-max N] [--limit N] [--watch 'charizard,pikachu'] [--watch-file path] [--me|--no-me] [--courtyard] [--urls]
-  traded-listings bootstrap [--solana|--all] [--beezie] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
-  traded-listings poll [--all] [--solana] [--beezie] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
-  traded-listings monitor [--offline] [--all] [--beezie] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
+  traded-listings bootstrap [--solana|--all] [--beezie] [--courtyard] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
+  traded-listings poll [--all] [--solana] [--beezie] [--courtyard] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
+  traded-listings monitor [--offline] [--all] [--beezie] [--courtyard] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
   traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture]
 
 Default command: radar (native MultiSourceRadar)
@@ -55,6 +55,7 @@ Monitor: PollEngine + OrderbookFeed native + RunCapture (data/runs/<iso>).
 --all: CC + Courtyard + Beezie (Base) + Beezie Solana + Renaiss + DYLI (+ Magic Eden unless --no-me)
 --beezie (with --solana): add Beezie Base (777 live pokemon listings, api.beezie.com)
   + Beezie Solana (thin, solana-api.beezie.com); without --solana it is ignored
+--courtyard: add Courtyard (Polygon) — works with --solana too (cross-chain breadth)
 --watch / --watch-file: client watchlist (name substrings, or id:/key: prefixes; JSON file ok)
 --urls: after radar JSON, print one line per listing: id\\topenUrl (deep-link only)
 
@@ -122,6 +123,7 @@ function buildProviders(args: string[]): ListingsProvider[] {
     return createSolanaProviders({
       includeBeezie: useBeezie,
       includeBeezieSolana: useBeezie,
+      courtyard: args.includes("--courtyard"),
     });
   }
   const useAll = args.includes("--all");

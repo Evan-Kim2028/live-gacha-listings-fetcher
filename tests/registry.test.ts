@@ -144,6 +144,32 @@ describe("provider registry modularity", () => {
     ).not.toContain("beezie");
   });
 
+  it("createSolanaProviders({ courtyard: true }) adds Courtyard (Polygon)", () => {
+    expect(
+      createSolanaProviders({ courtyard: true }).map((p) => p.id),
+    ).toEqual([
+      "collectorcrypt",
+      "magiceden",
+      "phygitals",
+      "courtyard",
+    ]);
+    // Combines with Beezie opt-ins
+    expect(
+      createSolanaProviders({
+        includeBeezie: true,
+        includeBeezieSolana: true,
+        courtyard: true,
+      }).map((p) => p.id),
+    ).toEqual([
+      "collectorcrypt",
+      "magiceden",
+      "beezie",
+      "beezie-solana",
+      "phygitals",
+      "courtyard",
+    ]);
+  });
+
   it("createSolanaProviders({ includeBeezie: true }) or includeEvm adds Beezie", () => {
     expect(
       createSolanaProviders({ includeBeezie: true }).map((p) => p.id),

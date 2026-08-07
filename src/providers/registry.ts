@@ -97,6 +97,11 @@ export interface SolanaProvidersOptions {
   includeBeezieSolana?: boolean;
   /** Same as `includeBeezie` — opt into EVM long-tail (Beezie) for breadth. */
   includeEvm?: boolean;
+  /**
+   * Include Courtyard (Polygon, Algolia listings + on-chain orderbook bids).
+   * Not Solana-native — opt in when cross-chain breadth is wanted.
+   */
+  courtyard?: boolean;
 }
 
 /**
@@ -159,6 +164,10 @@ export function createSolanaProviders(
   }
   if (opts.includeBeezieSolana) {
     out.splice(3, 0, createBeezieSolanaProvider());
+  }
+  if (opts.courtyard) {
+    // Courtyard (Polygon) after Phygitals — cross-chain breadth opt-in
+    out.push(createCourtyardProvider());
   }
   return out;
 }

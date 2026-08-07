@@ -80,7 +80,7 @@ poll.start();
 | `collectorcrypt` | yes | Official marketplace API |
 | `magiceden` | yes | CC collection listings + sampled offers |
 | `phygitals` | yes | Soft-fail on outage (no book wipe) |
-| `courtyard` | no | Algolia listings; Polygon |
+| `courtyard` | opt-in | Polygon; `includeCourtyard` via `--courtyard` (works with `--solana`) |
 | `beezie` | opt-in EVM | `includeBeezie` / `includeEvm` |
 | `beezie-solana` | opt-in | Solana-native (solana.beezie.com); `includeBeezieSolana` |
 | `renaiss` / `dyli` | no | Origin APIs; see NATIVE_SOURCES |
