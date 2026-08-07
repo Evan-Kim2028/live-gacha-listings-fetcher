@@ -1537,3 +1537,199 @@ describe("Adversarial: scope coexistence", () => {
     expect(rowsA).toHaveLength(3);
   });
 });
+
+describe("Card lookup + first-seen (roadmap #1/#2)", () => {
+  it("store.lookupByTokenId finds a token across venues/scopes", () => {
+    const store = new ListingStore();
+    const base = {
+      price: 10, currency: "USDC", fmv: null, delta: null, market: "X",
+      externalUrl: null, imageUrl: null, listedAt: null, firstListedAt: null,
+      lastEvent: "LIST" as const, tcg: "pokemon", itemType: "card",
+      grader: null, grade: null, gradeNum: null, language: null, setRaw: null,
+      cardNumber: null, year: null, confidence: null, canonical: null,
+      contractAddress: null, searchBlob: "x",
+    };
+    store.upsertOne({ ...base, id: "a:1", provider: "a", platform: "a", nativeId: "mint1", tokenId: "mint1", name: "A" }, { provider: "a" });
+    store.upsertOne({ ...base, id: "b:2", provider: "b", platform: "b", nativeId: "other", tokenId: "mint1", name: "B" }, { provider: "b" });
+    store.upsertOne({ ...base, id: "c:3", provider: "c", platform: "c", nativeId: "mint2", tokenId: "mint2", name: "C" }, { provider: "c" });
+    const hits = store.lookupByTokenId("mint1");
+    expect(hits.map((l) => l.id).sort()).toEqual(["a:1", "b:2"]);
+    expect(store.lookupByTokenId("nope")).toEqual([]);
+  });
+
+  it("firstSeenAt is stamped once and preserved across re-observes", () => {
+    const store = new ListingStore();
+    const row = {
+      id: "x:1", provider: "x", platform: "x", nativeId: "1", tokenId: "t1",
+      name: "X", price: 10, currency: "USDC", fmv: null, delta: null, market: "X",
+      externalUrl: null, imageUrl: null, listedAt: null, firstListedAt: null,
+      lastEvent: "LIST" as const, tcg: "pokemon", itemType: "card",
+      grader: null, grade: null, gradeNum: null, language: null, setRaw: null,
+      cardNumber: null, year: null, confidence: null, canonical: null,
+      contractAddress: null, searchBlob: "x",
+    };
+    store.upsertOne(row, { provider: "x" }, "2026-08-01T00:00:00Z");
+    expect(store.get("x:1")?.firstSeenAt).toBe("2026-08-01T00:00:00Z");
+    // reprice later — firstSeenAt must NOT move
+    store.upsertOne({ ...row, price: 12 }, { provider: "x" }, "2026-08-07T00:00:00Z");
+    const l = store.get("x:1")!;
+    expect(l.firstSeenAt).toBe("2026-08-01T00:00:00Z");
+    expect(l.lastSeenAt).toBe("2026-08-07T00:00:00Z");
+    expect(l.price).toBe(12);
+    // replaceScopeSnapshot path too
+    const store2 = new ListingStore();
+    store2.replaceScopeSnapshot("x", "sig", [row], "2026-08-01T00:00:00Z");
+    store2.replaceScopeSnapshot("x", "sig", [{ ...row, price: 11 }], "2026-08-02T00:00:00Z");
+    expect(store2.get("x:1")?.firstSeenAt).toBe("2026-08-01T00:00:00Z");
+  });
+
+  it("beezie getByTokenId normalizes lowercase sellOrder + firstListedAt", async () => {
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      expect(String(input)).toContain("/dropItems/getByTokenId/mint1");
+      return new Response(
+        JSON.stringify({
+          dropItem: {
+            id: 1, tokenId: "mint1",
+            owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+            metadata: { name: "Card One", attributes: [] },
+            sellOrder: { amountUSDC: "25.00", createdAt: 1786000000000 },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createBeezieSolanaProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    const l = await p.getByTokenId("mint1");
+    expect(l?.price).toBe(25);
+    expect(l?.tokenId).toBe("mint1");
+    expect(l?.listedAt).toBe(new Date(1786000000000).toISOString());
+    expect(l?.firstListedAt).toBe(new Date(1786000000000).toISOString());
+    // 404 → null
+    const p2 = createBeezieSolanaProvider({
+      fetchImpl: (async () => new Response("not found", { status: 404 })) as typeof fetch,
+      maxRetries: 0,
+    });
+    expect(await p2.getByTokenId("missing")).toBeNull();
+  });
+
+  it("courtyard getByTokenId builds a listing from orderbook asset asks", async () => {
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      expect(String(input)).toContain("/orderbook/assets/cytoken1");
+      return new Response(
+        JSON.stringify({
+          asset: {
+            proof_of_integrity: "cytoken1",
+            title: "2020 Card (PSA 9)",
+            fmv_estimate_usd: 45.5,
+            image: "https://img/1.jpg",
+            contract: "0xabc",
+            attributes: [
+              { name: "Grader", value: "PSA" },
+              { name: "Grade", value: "9" },
+              { name: "Set", value: "Set X" },
+              { name: "Year", value: "2020" },
+            ],
+            orderbook_asks: [
+              {
+                Ask: { UsdcAmount: 52000000 },
+                listed_at: "2026-08-07T22:00:00Z",
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createCourtyardProvider({ fetchImpl: fetchImpl as typeof fetch, maxRetries: 0 });
+    const l = await p.getByTokenId("cytoken1");
+    expect(l?.price).toBe(52); // micro-USDC → USD
+    expect(l?.fmv).toBe(45.5);
+    expect(l?.grader).toBe("PSA");
+    expect(l?.gradeNum).toBe(9);
+    expect(l?.setRaw).toBe("Set X");
+    expect(l?.year).toBe(2020);
+    expect(l?.listedAt).toBe("2026-08-07T22:00:00Z");
+    expect(l?.externalUrl).toContain("courtyard.io/asset/cytoken1");
+    // no ask → null
+    const p2 = createCourtyardProvider({
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ asset: { proof_of_integrity: "x", title: "X", orderbook_asks: [] } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })) as typeof fetch,
+      maxRetries: 0,
+    });
+    expect(await p2.getByTokenId("x")).toBeNull();
+  });
+});
+
+describe("Orderbook depth + cross-venue clustering (roadmap #4/#5)", () => {
+  it("book() returns full ask/bid depth levels, not just TOB", () => {
+    const store = new OrderbookStore();
+    const mk = (id: string, price: number): Listing => ({
+      id, provider: "cc", platform: "cc", nativeId: id, tokenId: id,
+      name: "Charizard EX #12", price, currency: "USDC", fmv: null, delta: null,
+      market: "CC", seller: null, externalUrl: null, imageUrl: null,
+      listedAt: null, firstListedAt: null, lastEvent: "LIST", tcg: "pokemon",
+      itemType: "card", grader: "PSA", grade: "9", gradeNum: 9, language: null,
+      setRaw: "Evolutions", cardNumber: "12", year: 2016, confidence: null,
+      canonical: null, contractAddress: null, searchBlob: "x",
+    });
+    for (const [id, p] of [["a1", 100], ["a2", 100], ["a3", 105], ["a4", 110]]) {
+      store.upsertAsk(listingToAsk(mk(id, p)));
+    }
+    const b = store.book("name:pokemon|charizard ex #12|PSA|9");
+    expect(b.bestAsk).toBe(100);
+    expect(b.asks).toHaveLength(3); // 100 (x2 aggregated), 105, 110
+    expect(b.asks[0]).toMatchObject({ price: 100, size: 2, orderCount: 2 });
+    expect(b.asks[1]).toMatchObject({ price: 105, size: 1 });
+    expect(b.asks[2]).toMatchObject({ price: 110, size: 1 });
+    // sorted low → high
+    expect(b.asks.map((l) => l.price)).toEqual([100, 105, 110]);
+  });
+
+  it("same name+grader+grade merges asks across venues (cross-venue identity)", () => {
+    const store = new OrderbookStore();
+    const mk = (id: string, provider: string, price: number): Listing => ({
+      id, provider, platform: provider, nativeId: id, tokenId: id,
+      name: "Charizard EX #12", price, currency: "USDC", fmv: null, delta: null,
+      market: provider, seller: null, externalUrl: null, imageUrl: null,
+      listedAt: null, firstListedAt: null, lastEvent: "LIST", tcg: "pokemon",
+      itemType: "card", grader: "PSA", grade: "9", gradeNum: 9, language: null,
+      setRaw: "Evolutions", cardNumber: "12", year: 2016, confidence: null,
+      canonical: null, contractAddress: null, searchBlob: "x",
+    });
+    // same physical card on CC (mint A) and ME (mint B) — distinct ids, same name
+    store.upsertAsk(listingToAsk(mk("cc:mintA", "collectorcrypt", 100)));
+    store.upsertAsk(listingToAsk(mk("me:mintB", "magiceden", 102)));
+    const key = "name:pokemon|charizard ex #12|PSA|9";
+    const b = store.book(key);
+    expect(b.asks).toHaveLength(2);
+    expect(b.bestAsk).toBe(100);
+    expect(store.instrumentKeys()).toContain(key);
+  });
+});
+
+describe("Cross-venue clustering (roadmap #5)", () => {
+  it("sameCardListings finds all venues for one token", async () => {
+    const { sameCardListings } = await import("../src/canonical.js");
+    const mk = (id: string, provider: string, name: string): Listing => ({
+      id, provider, platform: provider, nativeId: id, tokenId: id,
+      name, price: 10, currency: "USDC", fmv: null, delta: null,
+      market: provider, seller: null, externalUrl: null, imageUrl: null,
+      listedAt: null, firstListedAt: null, lastEvent: "LIST", tcg: "pokemon",
+      itemType: "card", grader: "PSA", grade: "10", gradeNum: 10, language: null,
+      setRaw: null, cardNumber: null, year: null, confidence: null,
+      canonical: null, contractAddress: null, searchBlob: name,
+    });
+    const rows = [
+      mk("cc:mintA", "collectorcrypt", "Charizard ex #12"),
+      mk("me:mintB", "magiceden", "charizard ex #12"),
+      mk("cy:proofC", "courtyard", "2020 Charizard EX #12 PSA 10 (PSA 10)"), // different name → different cluster
+      mk("bz:d", "beezie", "Pikachu"),
+    ];
+    const same = sameCardListings("cc:mintA", rows);
+    expect(same.map((l) => l.provider).sort()).toEqual(["collectorcrypt", "magiceden"]);
+    expect(sameCardListings("nope", rows)).toEqual([]);
+  });
+});

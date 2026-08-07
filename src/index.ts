@@ -30,6 +30,9 @@ export {
 } from "./externalUrl.js";
 
 export { ListingStore, trimListing, type UpsertStats } from "./store.js";
+export { withFirstSeenAt } from "./listingAge.js";
+export { cardClusterKey, clusterListings, sameCardListings } from "./canonical.js";
+export { HistoryStore, type PricePoint, type CardLifetime, type HistoryEventKind } from "./history/HistoryStore.js";
 export {
   withLastSeenAt,
   listingAgeMs,

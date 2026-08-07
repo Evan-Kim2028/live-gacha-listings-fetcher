@@ -13,6 +13,24 @@ export function withLastSeenAt<T extends Pick<Listing, "lastSeenAt">>(
   return { ...listing, lastSeenAt: fetchedAt };
 }
 
+/**
+ * Ensure `firstSeenAt` is stamped. New identities get `seenAt`; existing
+ * identities keep their original first-seen (never re-stamped on re-observe).
+ */
+export function withFirstSeenAt<T extends Pick<Listing, "firstSeenAt">>(
+  listing: T,
+  seenAt: string,
+  prev?: { firstSeenAt?: string | null } | null,
+): T {
+  // Existing identity: carry its original first-seen forward.
+  if (prev?.firstSeenAt) {
+    return { ...listing, firstSeenAt: prev.firstSeenAt };
+  }
+  const cur = listing.firstSeenAt;
+  if (cur != null && cur !== "") return listing;
+  return { ...listing, firstSeenAt: seenAt };
+}
+
 /** Age in ms from lastSeenAt, or null when unknown / unparseable. */
 export function listingAgeMs(
   listing: Pick<Listing, "lastSeenAt">,

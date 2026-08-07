@@ -45,6 +45,32 @@ export class BeezieProvider extends LongtailProvider {
     return this.pullBeezie(query);
   }
 
+  /**
+   * Point lookup via the public GET /dropItems/getByTokenId/:tokenId endpoint.
+   * Returns null when the token is unknown or has no active SellOrder.
+   */
+  async getByTokenId(tokenId: string): Promise<Listing | null> {
+    const url = `${this.baseUrl.endsWith("/") ? this.baseUrl.slice(0, -1) : this.baseUrl}/dropItems/getByTokenId/${encodeURIComponent(tokenId)}`;
+    let result;
+    try {
+      result = await this.fetchGetJson(url);
+    } catch (e) {
+      // 404 / 5xx / network: unknown token or origin hiccup — null, never throw.
+      this.lastError = `beezie getByTokenId ${tokenId.slice(0, 16)}…: ${e instanceof Error ? e.message : String(e)}`;
+      return null;
+    }
+    if (result.notModified) return null;
+    const body = result.body as { dropItem?: Record<string, unknown> } | null;
+    const dropItem = body?.dropItem;
+    if (!dropItem || typeof dropItem !== "object") return null;
+    // Detail endpoint spells it `sellOrder` (lowercase); browse uses `SellOrder`.
+    const row = {
+      ...dropItem,
+      SellOrder: dropItem.sellOrder ?? dropItem.SellOrder ?? null,
+    };
+    return normalizeBeezieRow(row, this.id);
+  }
+
   protected override async pullVenuePages(
     query: PullQuery & { maxPages?: number },
   ): Promise<PullPage> {

@@ -326,6 +326,85 @@ export class CourtyardProvider implements ListingsProvider {
     };
   }
 
+  /**
+   * Point lookup via GET /orderbook/assets/{proofOfIntegrity} (browser-like
+   * UA + Origin/Referer; bare curl 403 WAF). Returns null when the token is
+   * unknown or has no active ask. Price = active ask UsdcAmount (micro-USDC).
+   */
+  async getByTokenId(tokenId: string): Promise<Listing | null> {
+    const res = await fetchWithRetry(
+      `${DEFAULT_API_BASE}/orderbook/assets/${encodeURIComponent(tokenId)}`,
+      { headers: courtyardHeaders(this.userAgent, this.cookie) },
+      {
+        fetchImpl: this.fetchImpl,
+        maxRetries: this.maxRetries,
+        baseDelayMs: this.retryDelayMs,
+      },
+    );
+    if (!res.ok) {
+      this.lastError = `courtyard getByTokenId HTTP ${res.status}`;
+      return null;
+    }
+    const body = (await res.json()) as { asset?: CyAssetOrderbook };
+    const a = body?.asset;
+    if (!a) return null;
+    const ask = (a.orderbook_asks?.[0] as
+      | { Ask?: { UsdcAmount?: number }; listed_at?: string }
+      | undefined);
+    const usdc = ask?.Ask?.UsdcAmount;
+    if (usdc == null || !Number.isFinite(usdc) || usdc <= 0) return null;
+    const price = usdc / 1_000_000; // micro-USDC
+    const meta = new Map(
+      (a.attributes ?? [])
+        .filter((x) => x?.name && x?.value)
+        .map((x) => [String(x.name).toLowerCase(), String(x.value)]),
+    );
+    const name = a.title ?? meta.get("title/subject") ?? tokenId;
+    const listedAt = ask?.listed_at ?? null;
+    const grade = meta.get("grade") ?? null;
+    const gradeMatch = grade?.match(/([\d.]+)/);
+    return {
+      id: listingId({
+        provider: this.id,
+        platform: "courtyard",
+        nativeId: a.proof_of_integrity ?? tokenId,
+      }),
+      provider: this.id,
+      platform: "courtyard",
+      nativeId: a.proof_of_integrity ?? tokenId,
+      tokenId: a.proof_of_integrity ?? tokenId,
+      name,
+      price,
+      currency: "USDC",
+      fmv:
+        a.fmv_estimate_usd != null && Number.isFinite(a.fmv_estimate_usd)
+          ? a.fmv_estimate_usd
+          : null,
+      delta: deltaFromListing(price, a.fmv_estimate_usd ?? null, "USDC"),
+      market: "Courtyard (Polygon)",
+      seller: null,
+      externalUrl: courtyardListingUrl(a.proof_of_integrity ?? tokenId),
+      imageUrl: (a.image as string | undefined) ?? null,
+      listedAt,
+      firstListedAt: listedAt,
+      lastEvent: "LIST",
+      tcg: "pokemon",
+      itemType: "card",
+      grader: meta.get("grader") ?? null,
+      grade,
+      gradeNum: gradeMatch ? Number(gradeMatch[1]) : null,
+      language: meta.get("language") ?? null,
+      setRaw: meta.get("set") ?? null,
+      cardNumber: meta.get("card number") ?? null,
+      year: meta.get("year") ? Number(meta.get("year")) : null,
+      confidence: null,
+      canonical: null,
+      contractAddress: a.contract ?? null,
+      searchBlob: name,
+      raw: a,
+    };
+  }
+
   async pull(query: PullQuery = {}): Promise<PullPage> {
     this.lastError = null;
     if (query.fixturePath) {

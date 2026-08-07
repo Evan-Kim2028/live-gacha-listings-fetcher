@@ -10,6 +10,7 @@
  * aggregator re-scrape hop for the same venues.
  */
 import { resolve, dirname, join } from "node:path";
+import { HistoryStore } from "./history/HistoryStore.js";
 import { fileURLToPath } from "node:url";
 import { ListingStore } from "./store.js";
 import { syncOnce } from "./sync.js";
@@ -44,6 +45,8 @@ function usage(): never {
   traded-listings poll [--all] [--solana] [--beezie] [--courtyard] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
   traded-listings monitor [--offline] [--all] [--beezie] [--courtyard] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
   traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture]
+  traded-listings card <tokenId> [--history data/history.db] [--bids]
+  traded-listings history <tokenId> --db data/history.db
 
 Default command: radar (native MultiSourceRadar)
 Bootstrap: cold MultiSourceRadar.bootstrapAll (pullAll + bootstrap:true) →
@@ -323,6 +326,7 @@ async function runBootstrap(args: string[]): Promise<void> {
       minIntervalMs,
       tickMs: Math.min(2_000, displayIntervalMs),
       parallel: true,
+      history: flagStr(args, "--history") ? new HistoryStore(flagStr(args, "--history")!) : undefined,
       onSync: (id, result: SyncResult) => {
         pollTicks += 1;
         if (result.shortCircuited) warmShortCircuits.push(id);
@@ -467,6 +471,8 @@ async function runPoll(args: string[]): Promise<void> {
     fetched: number;
     durationMs: number;
   }> = [];
+  const historyPath = flagStr(args, "--history");
+  const history = historyPath ? new HistoryStore(historyPath) : undefined;
   const poll = new PollScheduler({
     store: radar.store,
     providers,
@@ -474,6 +480,7 @@ async function runPoll(args: string[]): Promise<void> {
     minIntervalMs,
     tickMs: Math.min(5_000, displayIntervalMs),
     parallel,
+    history: history ?? undefined,
     onSync: (id, result: SyncResult) => {
       ticks += 1;
       orderbook.refreshAsks();
@@ -554,6 +561,97 @@ async function runPoll(args: string[]): Promise<void> {
   if (radar.store.size() < 1) process.exit(1);
 }
 
+
+/**
+ * `card <tokenId>` — live point lookup across venues with a per-token API
+ * (Beezie Base/Solana getByTokenId, Courtyard orderbook/assets). CC/ME have
+ * no public per-token listing endpoint; their rows are reachable via the
+ * store (radar/poll) instead. Optional: --history db, --bids.
+ */
+async function runCard(args: string[]): Promise<void> {
+  const tokenId = args[0];
+  if (!tokenId) {
+    console.error("usage: traded-listings card <tokenId> [--history data/history.db] [--bids]");
+    process.exit(1);
+  }
+  const { createSolanaProviders, CollectorCryptBidsProvider, CourtyardBidsProvider } = await import("./index.js");
+  const providers = createSolanaProviders({
+    includeBeezie: true,
+    includeBeezieSolana: true,
+    courtyard: true,
+  });
+  const out: Record<string, unknown> = { tokenId, ts: new Date().toISOString() };
+  const listings: Array<Record<string, unknown>> = [];
+  for (const p of providers) {
+    if (typeof p.getByTokenId !== "function") continue;
+    const l = await p.getByTokenId(tokenId);
+    if (l) {
+      listings.push({
+        provider: l.provider,
+        market: l.market,
+        name: l.name,
+        price: l.price,
+        currency: l.currency,
+        fmv: l.fmv,
+        delta: l.delta,
+        grader: l.grader,
+        grade: l.grade,
+        setRaw: l.setRaw,
+        year: l.year,
+        listedAt: l.listedAt,
+        firstListedAt: l.firstListedAt,
+        externalUrl: l.externalUrl,
+      });
+    }
+  }
+  out.listings = listings;
+  if (args.includes("--bids")) {
+    const bids: unknown[] = [];
+    const cc = new CollectorCryptBidsProvider({ nftAddresses: [tokenId] });
+    const cy = new CourtyardBidsProvider({ assetIds: [tokenId] });
+    for (const [label, r] of [
+      ["collectorcrypt", await cc.pull({}).catch((e) => ({ error: String(e) }))],
+      ["courtyard", await cy.pull({}).catch((e) => ({ error: String(e) }))],
+    ] as const) {
+      bids.push({ venue: label, bids: r });
+    }
+    out.bids = bids;
+  }
+  const db = flagStr(args, "--history");
+  if (db) {
+    const { HistoryStore } = await import("./history/HistoryStore.js");
+    const h = new HistoryStore(resolve(db));
+    out.lifetime = h.cardLifetime(tokenId);
+    out.priceHistory = h.priceHistory(tokenId, 20);
+    h.close();
+  }
+  console.log(JSON.stringify(out, null, 2));
+  if (listings.length === 0 && !args.includes("--history")) {
+    console.error(`no active listing found for ${tokenId} on Beezie/Courtyard (CC/ME need a store lookup)`);
+    process.exit(1);
+  }
+}
+
+/** `history <tokenId> --db <sqlite>` — lifetime + price events. */
+async function runHistory(args: string[]): Promise<void> {
+  const tokenId = args[0];
+  const db = flagStr(args, "--db");
+  if (!tokenId || !db) {
+    console.error("usage: traded-listings history <tokenId> --db data/history.db");
+    process.exit(1);
+  }
+  const { HistoryStore } = await import("./history/HistoryStore.js");
+  const h = new HistoryStore(resolve(db));
+  const lifetime = h.cardLifetime(tokenId);
+  const history = h.priceHistory(tokenId, 100);
+  h.close();
+  console.log(JSON.stringify({ tokenId, lifetime, priceHistory: history }, null, 2));
+  if (!lifetime) {
+    console.error(`no history for ${tokenId} — feed via: traded-listings poll --history data/history.db`);
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("-h") || args.includes("--help")) usage();
@@ -566,6 +664,8 @@ async function main(): Promise<void> {
     "poll",
     "monitor",
     "sync",
+    "card",
+    "history",
   ]);
   const first = args[0];
   const cmd = first && known.has(first) ? first : "radar";
@@ -603,6 +703,17 @@ async function main(): Promise<void> {
       });
       proc.on("error", reject);
     });
+    return;
+  }
+
+
+  if (cmd === "card") {
+    await runCard(rest);
+    return;
+  }
+
+  if (cmd === "history") {
+    await runHistory(rest);
     return;
   }
 

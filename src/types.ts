@@ -47,6 +47,12 @@ export interface Listing {
    * Soft-fail pulls do not refresh this (UI may grey-out via isStale).
    */
   lastSeenAt?: string | null;
+  /**
+   * First time this identity was ever observed by this store (ISO).
+   * Stamped on first insert; preserved on every later upsert.
+   * Optional/additive — not part of identity; ignored by listingsEqual.
+   */
+  firstSeenAt?: string | null;
   lastEvent: ListingEvent | null;
   tcg: string | null;
   itemType: string | null;

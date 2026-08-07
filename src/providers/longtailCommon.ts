@@ -586,7 +586,10 @@ export function normalizeBeezieRow(
     imageUrl: meta.image ?? null,
     listedAt:
       sell.createdAt != null ? new Date(Number(sell.createdAt)).toISOString() : null,
-    firstListedAt: null,
+    // SellOrder.createdAt is the earliest list time the API exposes — it IS
+    // the first-known listing, so age tracking works without prior history.
+    firstListedAt:
+      sell.createdAt != null ? new Date(Number(sell.createdAt)).toISOString() : null,
     lastEvent: "LIST",
     tcg: (attrs.category ?? "pokemon").toLowerCase().includes("pokemon")
       ? "pokemon"

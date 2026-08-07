@@ -174,6 +174,12 @@ export interface CollectorCryptOptions {
 }
 
 export interface CollectorCryptBidsOptions extends CollectorCryptOptions {
+  /**
+   * Explicit mint addresses to fetch offers for. When set, pull() skips
+   * browse discovery and queries getCardOffers for exactly these mints
+   * (used by `traded-listings card <tokenId> --bids`).
+   */
+  nftAddresses?: string[];
   defaultTcg?: string;
   /**
    * After browse, call POST getCardOffers per mint with offer refs (default true).
@@ -1077,6 +1083,57 @@ export class CollectorCryptBidsProvider implements BidsProvider {
   }
 
   async pull(query: CollectorCryptBidsQuery = {}): Promise<BidOrder[]> {
+    const explicit = this.opts.nftAddresses;
+    if (explicit && explicit.length > 0 && !query.fixturePath && !query.offline) {
+      // Point lookup: no browse discovery — getCardOffers for exactly these mints.
+      const bids: BidOrder[] = [];
+      const seen = new Set<string>();
+      const budgetRun = await mapWithBidBudget(explicit, {
+        provider: this.id,
+        assetOf: (mint) => mint,
+        maxConcurrent: this.maxConcurrent,
+        ttlMs: this.ttlMs,
+        cache: this.offersCache,
+        fetch: async (mint) => {
+          try {
+            const { offers } = await fetchCcCardOffers(mint, {
+              baseUrl: this.opts.baseUrl,
+              fetchImpl: this.opts.fetchImpl,
+              userAgent: this.opts.userAgent,
+              useV2: true,
+            });
+            return { offers, httpStatus: null, error: undefined as string | undefined };
+          } catch (e) {
+            return {
+              offers: [] as CcOfferRef[],
+              httpStatus: null as number | null,
+              error: e instanceof Error ? e.message : String(e),
+            };
+          }
+        },
+      });
+      for (let i = 0; i < explicit.length; i++) {
+        const mint = explicit[i]!;
+        const r = budgetRun.results[i]!;
+        const card: CcCard = {
+          id: mint,
+          nftAddress: mint,
+          itemName: mint,
+          offers: r.offers,
+        } as CcCard;
+        const observedAt = new Date().toISOString();
+        for (const o of r.offers) {
+          const b = normalizeCcOffer(o, { ...card, nftAddress: mint }, "collectorcrypt", {
+            observedAt,
+          });
+          if (!b) continue;
+          if (seen.has(b.id)) continue;
+          seen.add(b.id);
+          bids.push(b);
+        }
+      }
+      return bids;
+    }
     const pages = Math.max(1, query.pages ?? 1);
     const step = clampStep(query.limit, 50);
     const pullQuery: PullQuery = {
