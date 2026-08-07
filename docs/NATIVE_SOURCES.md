@@ -56,6 +56,8 @@ CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30
 
 **Opt-in Courtyard (cross-chain):** `createSolanaProviders({ courtyard: true })` appends `courtyard` (Polygon — Algolia `marketplace_prod_recently_listed` + on-chain orderbook bids). `--solana --courtyard` on the CLI. Poké category is facet-filtered server-side at Algolia.
 
+**All categories (`--tcg all`):** drops the category filter on every venue — CC/Courtyard/Phygitals omit their category param/facet, and Beezie walks **every** enabled `/dropItems/categories` (via `allBeezieCategories: true` on the provider) and merges into one scope. Live all-venue sync ≈ **17.7k rows** (2026-08-07: Phygitals 8.5k, ME 4.4k, CC 3k, Courtyard 1.4k, Beezie Base 915, Beezie Solana 2), zero errors. Any category that fails marks the Beezie walk incomplete (`hasMore=true` → upsert-only, never prunes).
+
 `createDefaultProviders({ all: true })` multi-venue path now includes `beezie-solana` next to EVM `beezie`.
 
 ### Real-time update cadence (no single SSE)

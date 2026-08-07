@@ -56,6 +56,8 @@ Monitor: PollEngine + OrderbookFeed native + RunCapture (data/runs/<iso>).
 --beezie (with --solana): add Beezie Base (777 live pokemon listings, api.beezie.com)
   + Beezie Solana (thin, solana-api.beezie.com); without --solana it is ignored
 --courtyard: add Courtyard (Polygon) — works with --solana too (cross-chain breadth)
+--tcg pokemon|one_piece|all  (default pokemon; **all** = every category each venue carries —
+  Beezie walks all /dropItems/categories, CC/Courtyard/Phygitals drop their category facet)
 --watch / --watch-file: client watchlist (name substrings, or id:/key: prefixes; JSON file ok)
 --urls: after radar JSON, print one line per listing: id\\topenUrl (deep-link only)
 
@@ -89,8 +91,10 @@ function flagStr(args: string[], name: string): string | undefined {
 }
 
 function buildFilter(args: string[]): PullQuery {
+  const tcgRaw = flagStr(args, "--tcg");
   const filter: PullQuery = {
-    tcg: flagStr(args, "--tcg") ?? "pokemon",
+    // --tcg all = every category the venues carry (no category filter)
+    tcg: tcgRaw && tcgRaw !== "all" ? tcgRaw : undefined,
     limit: flagNum(args, "--limit") ?? 20,
     sort: "new",
   };
@@ -120,10 +124,12 @@ function buildWatchlistFromArgs(args: string[]): Watchlist | undefined {
 function buildProviders(args: string[]): ListingsProvider[] {
   if (args.includes("--solana") && !args.includes("--all")) {
     const useBeezie = args.includes("--beezie");
+    const allCategories = flagStr(args, "--tcg") === "all";
     return createSolanaProviders({
       includeBeezie: useBeezie,
       includeBeezieSolana: useBeezie,
       courtyard: args.includes("--courtyard"),
+      beezieAllCategories: allCategories,
     });
   }
   const useAll = args.includes("--all");

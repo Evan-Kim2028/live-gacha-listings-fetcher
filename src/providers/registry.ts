@@ -102,6 +102,12 @@ export interface SolanaProvidersOptions {
    * Not Solana-native — opt in when cross-chain breadth is wanted.
    */
   courtyard?: boolean;
+  /**
+   * When true, Beezie venues walk **all** categories (GET /dropItems/categories)
+   * instead of only Pokémon (categoryId 1). Pair with a tcg-less filter
+   * (`--tcg all`) so other venues also skip their category facet.
+   */
+  beezieAllCategories?: boolean;
 }
 
 /**
@@ -168,6 +174,18 @@ export function createSolanaProviders(
   if (opts.courtyard) {
     // Courtyard (Polygon) after Phygitals — cross-chain breadth opt-in
     out.push(createCourtyardProvider());
+  }
+  if (opts.beezieAllCategories) {
+    // Rebuild beezie venues with the all-categories walker
+    const idx = out.findIndex(
+      (p) => p.id === "beezie" || p.id === "beezie-solana",
+    );
+    if (idx >= 0) {
+      const isSolana = out[idx]!.id === "beezie-solana";
+      out[idx] = isSolana
+        ? createBeezieSolanaProvider({ allBeezieCategories: true })
+        : createBeezieProvider({ allBeezieCategories: true });
+    }
   }
   return out;
 }

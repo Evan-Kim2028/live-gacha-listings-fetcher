@@ -48,6 +48,13 @@ export interface LongtailOptions {
   statusNote?: string;
   /** Beezie category id (default "1" = Pokémon) */
   beezieCategoryId?: string;
+  /**
+   * Pull **all** Beezie categories (GET /dropItems/categories) instead of
+   * only `beezieCategoryId`. Walks every enabled category and merges into
+   * one PullPage (one store scope). Any category that fails marks the walk
+   * incomplete (hasMore=true → upsert-only, no prune).
+   */
+  allBeezieCategories?: boolean;
   /** Retries after first attempt on 429 / 5xx / network (default 2). */
   maxRetries?: number;
   /** Base delay ms for exponential backoff (default 400). */
@@ -764,6 +771,7 @@ export class LongtailProvider implements ListingsProvider {
   private readonly fetchImpl: typeof fetch;
   readonly statusNote: string;
   private readonly beezieCategoryId: string;
+  private readonly allBeezieCategories: boolean;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
   private readonly apiKey: string | undefined;
@@ -805,6 +813,7 @@ export class LongtailProvider implements ListingsProvider {
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.statusNote = opts.statusNote ?? d.note;
     this.beezieCategoryId = opts.beezieCategoryId ?? "1";
+    this.allBeezieCategories = opts.allBeezieCategories ?? false;
     this.maxRetries = opts.maxRetries ?? 2;
     this.retryDelayMs = opts.retryDelayMs ?? 400;
     this.pageConcurrency = opts.pageConcurrency ?? DEFAULT_PAGE_CONCURRENCY;
@@ -893,6 +902,12 @@ export class LongtailProvider implements ListingsProvider {
       return this.pull(query);
     }
     if (
+      (this.id === "beezie" || this.id === "beezie-solana") &&
+      this.allBeezieCategories
+    ) {
+      return this.pullBeezieAllCategories(query);
+    }
+    if (
       this.id !== "beezie" &&
       this.id !== "beezie-solana" &&
       this.id !== "phygitals"
@@ -963,8 +978,9 @@ export class LongtailProvider implements ListingsProvider {
 
   /** Beezie page walk: fixed page size, API pages 1-based (EVM) / 0-based (Solana). */
   private async pullBeeziePages(
-    query: PullQuery & { maxPages?: number },
+    query: PullQuery & { maxPages?: number; categoryId?: string },
   ): Promise<PullPage> {
+    const categoryId = query.categoryId ?? this.beezieCategoryId;
     const pageSize =
       this.id === "beezie-solana" ? BEEZIE_SOLANA_PAGE_SIZE : BEEZIE_PAGE_SIZE;
     const maxPages = Math.max(
@@ -989,6 +1005,7 @@ export class LongtailProvider implements ListingsProvider {
       try {
         const one = await this.pullBeezie({
           ...query,
+          categoryId,
           offset: solana ? page * pageSize : (page - 1) * pageSize,
           limit: undefined, // API ignores limit; fixed page size
         });
@@ -1033,6 +1050,112 @@ export class LongtailProvider implements ListingsProvider {
       hasMore && (clientLimit == null || all.length < (total ?? Infinity)),
       total ?? listings.length,
     );
+  }
+
+  /**
+   * Walk **all** Beezie categories (GET /dropItems/categories) and merge into
+   * one PullPage (single store scope). A category that fails marks the walk
+   * incomplete (hasMore=true → sync upserts, never prunes); total soft-fail
+   * (all categories fail) returns an empty soft page.
+   */
+  private async pullBeezieAllCategories(
+    query: PullQuery & { maxPages?: number },
+  ): Promise<PullPage> {
+    const clientLimit = query.limit;
+    // All-categories walks default to the full ceiling — each category's walk
+    // ends naturally on !hasMore (LONGTAIL_DEFAULT_MAX_PAGES=1 would truncate).
+    const maxPagesPerCat = Math.max(
+      1,
+      Math.min(
+        query.maxPages ?? LONGTAIL_MAX_PAGES_CAP,
+        LONGTAIL_MAX_PAGES_CAP,
+      ),
+    );
+    const cats = await this.fetchBeezieCategories().catch((e) => {
+      this.lastError = `beezie categories fetch failed: ${e instanceof Error ? e.message : String(e)} — ${this.statusNote}`;
+      return null;
+    });
+    if (!cats || cats.length === 0) {
+      return emptyMeta(this.id, [], false, 0, { softFail: true });
+    }
+    const all: Listing[] = [];
+    let total = 0;
+    let anyOk = false;
+    const failures: string[] = [];
+    for (const c of cats) {
+      try {
+        const one = await this.pullBeeziePages({
+          ...query,
+          categoryId: String(c.id),
+          limit: undefined,
+          maxPages: maxPagesPerCat,
+        });
+        // pullBeeziePages swallows per-page errors: detect via soft/partial
+        // page markers instead of exceptions.
+        const softEmpty = one.meta.builtAt === null && one.listings.length === 0;
+        if (softEmpty) {
+          failures.push(
+            `${c.name || c.id}: ${this.lastError ?? "soft-fail empty"}`,
+          );
+          continue;
+        }
+        if (one.hasMore) failures.push(`${c.name || c.id}: partial walk`);
+        if (one.listings.length > 0) anyOk = true;
+        total += one.meta.total ?? one.listings.length;
+        all.push(...one.listings);
+      } catch (e) {
+        failures.push(`${c.name || c.id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (!anyOk) {
+      this.lastError = `beezie all-categories soft-fail (${failures.length}/${cats.length} failed): ${failures[0] ?? "no rows"} — ${this.statusNote}`;
+      return emptyMeta(this.id, [], false, 0, { softFail: true });
+    }
+    const listings = clientLimit != null ? all.slice(0, clientLimit) : all;
+    if (failures.length > 0) {
+      this.lastError = `beezie all-categories partial (${failures.length}/${cats.length} failed): ${failures.join("; ")}`;
+      return emptyMeta(this.id, listings, true, total || listings.length);
+    }
+    this.lastError = null;
+    return emptyMeta(
+      this.id,
+      listings,
+      clientLimit != null && all.length >= clientLimit,
+      total || listings.length,
+    );
+  }
+
+  /** GET /dropItems/categories → enabled category ids + names. */
+  private async fetchBeezieCategories(): Promise<
+    Array<{ id: number; name: string }>
+  > {
+    const url = `${this.baseUrl.endsWith("/") ? this.baseUrl.slice(0, -1) : this.baseUrl}/dropItems/categories`;
+    const res = await fetchWithRetry(
+      url,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": this.userAgent,
+        },
+      },
+      {
+        fetchImpl: this.fetchImpl,
+        maxRetries: this.maxRetries,
+        baseDelayMs: this.retryDelayMs,
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`beezie HTTP ${res.status} ${url}`);
+    }
+    const json = (await res.json()) as Array<{
+      id?: number | string;
+      name?: string;
+      enabled?: boolean;
+    }>;
+    if (!Array.isArray(json)) return [];
+    return json
+      .filter((c) => c && c.enabled !== false && c.id != null)
+      .map((c) => ({ id: Number(c.id), name: String(c.name ?? c.id) }));
   }
 
   /**
@@ -1272,11 +1395,14 @@ export class LongtailProvider implements ListingsProvider {
     };
   }
 
-  private async pullBeezie(query: PullQuery): Promise<PullPage> {
+  private async pullBeezie(
+    query: PullQuery & { categoryId?: string },
+  ): Promise<PullPage> {
     const url = new URL(
       this.listingPath,
       this.baseUrl.endsWith("/") ? this.baseUrl : this.baseUrl + "/",
     );
+    const categoryId = query.categoryId ?? this.beezieCategoryId;
     const page = this.beeziePageFromQuery(query);
     const solana = this.id === "beezie-solana";
     const body = solana
@@ -1285,7 +1411,7 @@ export class LongtailProvider implements ListingsProvider {
           saleStatus: "forSale",
           page: String(page),
           pageSize: String(query.limit ?? BEEZIE_SOLANA_PAGE_SIZE),
-          categoryId: this.beezieCategoryId,
+          categoryId,
           // Sort: default = recently listed; price sort = priceOrder.
           // (Site also supports fmvOrder; not needed for radar pulls.)
           ...(query.sort === "price"
@@ -1297,7 +1423,7 @@ export class LongtailProvider implements ListingsProvider {
           saleStatus: "forSale",
           sort: query.sort === "price" ? "priceAsc" : "recent",
           page: String(page),
-          categoryId: this.beezieCategoryId,
+          categoryId,
           // API currently ignores limit and returns ~20; still send for future compat
           limit: String(query.limit ?? BEEZIE_PAGE_SIZE),
         };

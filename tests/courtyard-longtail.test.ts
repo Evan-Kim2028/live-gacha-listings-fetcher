@@ -547,6 +547,129 @@ describe("Long-tail scaffolds", () => {
     expect(L.id.startsWith("beezie-solana:beezie-solana:")).toBe(true);
   });
 
+  it("beezie allBeezieCategories walks every enabled category and merges", async () => {
+    const seenCategories: string[] = [];
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/dropItems/categories")) {
+        return new Response(
+          JSON.stringify([
+            { id: 1, name: "Pokémon", enabled: true },
+            { id: 2, name: "One Piece", enabled: true },
+            { id: 3, name: "Disabled Cat", enabled: false },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        categoryId?: string;
+        page?: string;
+        pageSize?: string;
+      };
+      const cat = String(body.categoryId);
+      seenCategories.push(cat);
+      const page = Number(body.page ?? 0);
+      const pageSize = Number(body.pageSize ?? BEEZIE_SOLANA_PAGE_SIZE);
+      const dropItems = Array.from({ length: pageSize }, (_, i) => ({
+        id: Number(cat) * 1000 + page * pageSize + i + 1,
+        tokenId: `mint-${cat}-${page}-${i}`,
+        owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+        metadata: {
+          name: `Cat${cat} Card ${i}`,
+          attributes: [{ trait_type: "Category", trait_value: "Test" }],
+        },
+        SellOrder: { amountUSDC: "10.00", createdAt: 1 },
+      }));
+      return new Response(
+        JSON.stringify({ dropItems, total: pageSize * 2 }), // 2 pages per category
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+      allBeezieCategories: true,
+    });
+    const page = await p.pullAll({});
+    expect(new Set(seenCategories)).toEqual(new Set(["1", "2"])); // disabled skipped
+    expect(page.listings).toHaveLength(400); // 2 cats × 2 pages × 100
+    expect(page.hasMore).toBe(false);
+    expect(page.meta.total).toBe(400);
+    expect(new Set(page.listings.map((l) => l.id)).size).toBe(400);
+    expect(p.lastError).toBeNull();
+  });
+
+  it("beezie allBeezieCategories partial category failure is incomplete (no prune)", async () => {
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/dropItems/categories")) {
+        return new Response(
+          JSON.stringify([
+            { id: 1, name: "Pokémon", enabled: true },
+            { id: 2, name: "One Piece", enabled: true },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        categoryId?: string;
+      };
+      if (body.categoryId === "2") throw new Error("mock 500 category 2");
+      const dropItems = [
+        {
+          id: 1,
+          tokenId: "mint-1",
+          owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+          metadata: { name: "Cat1" },
+          SellOrder: { amountUSDC: "5.00", createdAt: 1 },
+        },
+      ];
+      return new Response(
+        JSON.stringify({ dropItems, total: 1 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const p = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+      allBeezieCategories: true,
+    });
+    const page = await p.pullAll({});
+    expect(page.listings).toHaveLength(1); // cat 1 rows kept
+    expect(page.hasMore).toBe(true); // incomplete — sync must not prune
+    expect(p.lastError).toMatch(/partial \(1\/2/);
+  });
+
+  it("beezie allBeezieCategories total failure is a soft empty", async () => {
+    const fetchImpl = async (
+      input: RequestInfo | URL,
+      _init?: RequestInit,
+    ): Promise<Response> => {
+      if (String(input).endsWith("/dropItems/categories")) {
+        return new Response(
+          JSON.stringify([{ id: 1, name: "Pokémon", enabled: true }]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      throw new Error("mock 500");
+    };
+    const p = createBeezieSolanaProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxRetries: 0,
+      allBeezieCategories: true,
+    });
+    const page = await p.pullAll({});
+    expect(page.listings).toHaveLength(0);
+    expect(page.meta.builtAt).toBeNull(); // soft-fail signal
+    expect(p.lastError).toMatch(/soft-fail/);
+  });
+
   it("beezie-solana request body is 0-based with pageSize + forSale", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const fetchImpl = async (
