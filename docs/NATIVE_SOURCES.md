@@ -68,13 +68,13 @@ Solana does not use one SSE stream for all origins. Freshness is **PollEngine pa
 
 Origins (CC, ME, Phygitals) have different APIs, CDNs, and failure modes, so there is no single SSE. Parallel per-source poll keeps a slow/5xx origin from blocking others and avoids aggregator SSE lock-in.
 
-### Beezie chain note (EVM, not Solana)
+### Beezie chain note (Base L2, not Solana)
 
-Live `owner` / `creatorAddress` values are **EVM** (`0x` + 40 hex). Catalog is Seaport-style `SellOrder.amountUSDC`, not Solana SPL.
+Live `owner` / `creatorAddress` values are **EVM** (`0x` + 40 hex) on **Base L2** — the claw machine contract `0xfd9a2eF0D719d53E1297d30788E4f37726d852A6` is verified on basescan.org. Catalog is Seaport-style `SellOrder.amountUSDC`, not Solana SPL. Live pokemon book ≈ **777 listings** (2026-08).
 
-- Not in default `createSolanaProviders()`. Opt in with `includeBeezie` / `includeEvm`.
+- Not in default `createSolanaProviders()`. Opt in with `includeBeezie` / `includeEvm` (or CLI `--solana --beezie`, which adds both Beezie venues).
 - When included, each listing is flagged:
-  - `listing.market` → `"Beezie (EVM)"` (or `"Beezie (Solana)"` if a base58 owner ever appears)
+  - `listing.market` → `"Beezie (Base)"` (or `"Beezie (Solana)"` for the solana venue, `"Beezie"` when unclassified)
   - `listing.raw.chain` → `"evm" | "solana" | "unknown"`
   - `listing.raw.chainNote` → short operator note
 - Pull retries on 429/5xx/network. **`pullAll`** (used by `syncOnce`) multi-pages when `limit` needs more than one page; `pullPages({ maxPages })` for explicit walks. Caps: page ~**20** fixed, **`LONGTAIL_MAX_PAGES_CAP` = 50**. Mid-walk failure soft-keeps collected rows; total soft-empty never prunes prior store scope.

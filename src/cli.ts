@@ -39,9 +39,9 @@ const BOOTSTRAP_DEFAULT_LIMIT = 50_000;
 
 function usage(): never {
   console.error(`Usage:
-  traded-listings [radar|native] [--solana] [--all] [--tcg pokemon] [--platform cc|me] [--price-min N] [--price-max N] [--limit N] [--watch 'charizard,pikachu'] [--watch-file path] [--me|--no-me] [--courtyard] [--urls]
-  traded-listings bootstrap [--solana|--all] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
-  traded-listings poll [--all] [--solana] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
+  traded-listings [radar|native] [--solana] [--all] [--beezie] [--tcg pokemon] [--platform cc|me] [--price-min N] [--price-max N] [--limit N] [--watch 'charizard,pikachu'] [--watch-file path] [--me|--no-me] [--courtyard] [--urls]
+  traded-listings bootstrap [--solana|--all] [--beezie] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
+  traded-listings poll [--all] [--solana] [--beezie] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
   traded-listings monitor [--offline] [--all] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
   traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture]
 
@@ -52,7 +52,9 @@ Bootstrap: cold MultiSourceRadar.bootstrapAll (pullAll + bootstrap:true) →
 Poll: PollEngine parallel by default for --solana/--all; per-provider intervals
   (CC 30s, ME 20s, Beezie 20s). Logs only ticks with upserted>0 (noise reduction).
 Monitor: PollEngine + OrderbookFeed native + RunCapture (data/runs/<iso>).
---all: CC + Courtyard + Beezie + Renaiss + DYLI (+ Magic Eden unless --no-me)
+--all: CC + Courtyard + Beezie (Base) + Beezie Solana + Renaiss + DYLI (+ Magic Eden unless --no-me)
+--beezie (with --solana): add Beezie Base (777 live pokemon listings, api.beezie.com)
+  + Beezie Solana (thin, solana-api.beezie.com); without --solana it is ignored
 --watch / --watch-file: client watchlist (name substrings, or id:/key: prefixes; JSON file ok)
 --urls: after radar JSON, print one line per listing: id\\topenUrl (deep-link only)
 
@@ -116,7 +118,11 @@ function buildWatchlistFromArgs(args: string[]): Watchlist | undefined {
 
 function buildProviders(args: string[]): ListingsProvider[] {
   if (args.includes("--solana") && !args.includes("--all")) {
-    return createSolanaProviders();
+    const useBeezie = args.includes("--beezie");
+    return createSolanaProviders({
+      includeBeezie: useBeezie,
+      includeBeezieSolana: useBeezie,
+    });
   }
   const useAll = args.includes("--all");
   const useCy = args.includes("--courtyard");

@@ -1,9 +1,10 @@
 /**
  * Long-tail marketplace providers: Beezie, Beezie Solana, Renaiss, DYLI, Phygitals.
  *
- * Beezie (EVM): live owners/creators are EVM `0x` addresses (Seaport-style
- * SellOrder), not Solana. Provider stays registered for inventory; normalize
- * flags `chain` on market + raw so Solana radar consumers can filter.
+ * Beezie (Base): EVM marketplace on Base L2 (Seaport-style `0x` SellOrder;
+ * claw contract verified on basescan.org). Provider stays registered for
+ * inventory; normalize flags `chain` on market + raw so Solana radar
+ * consumers can filter.
  *
  * Beezie Solana: same Hono API shape on `solana-api.beezie.com` (Solana mints,
  * USDC SellOrder). Site: solana.beezie.com/marketplace/pokemon.
@@ -82,7 +83,7 @@ const DEFAULTS: Record<
     note:
       "POST /dropItems/byCategory {filters, saleStatus, sort, page, categoryId}; " +
       "page size ~20 fixed; pullAll multi-page bootstrap (maxPages cap 50); " +
-      "owners/creators are EVM 0x (not Solana) — flagged on listing.market/raw.chain",
+      "Base L2 (EVM): owners/creators are 0x — flagged on listing.market/raw.chain",
   },
   "beezie-solana": {
     baseUrl: "https://solana-api.beezie.com",
@@ -378,7 +379,7 @@ export function detectBeezieChain(row: Record<string, unknown>): BeezieChain {
 }
 
 function beezieMarketLabel(chain: BeezieChain): string {
-  if (chain === "evm") return "Beezie (EVM)";
+  if (chain === "evm") return "Beezie (Base)";
   if (chain === "solana") return "Beezie (Solana)";
   return "Beezie";
 }
@@ -547,7 +548,7 @@ export function normalizeBeezieRow(
   const chain = detectBeezieChain(row);
   const chainNote =
     chain === "evm"
-      ? "EVM-only catalog: owner/creator are 0x addresses (Seaport SellOrder), not Solana"
+      ? "Base L2 (EVM) catalog: owner/creator are 0x addresses (Seaport SellOrder), not Solana"
       : chain === "solana"
         ? "Solana address shape detected on owner/creator"
         : "Could not classify owner/creator chain";
