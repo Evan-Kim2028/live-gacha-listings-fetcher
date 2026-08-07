@@ -90,7 +90,8 @@ Live `owner` / `creatorAddress` values are **EVM** (`0x` + 40 hex) on **Base L2*
 Site: `solana.beezie.com/marketplace/pokemon` · API: `solana-api.beezie.com` (Hono; no auth, no special headers; Cloudflare DYNAMIC, no cache headers → poll at repo cadence).
 
 - **Listings:** `POST /dropItems/byCategory` body `{ categoryId: "1" (pokemon), page: "0"-based, pageSize: "100" max, filters: [], saleStatus: "forSale", sellOrderDateOrder: "DESC" }` → `{ dropItems: [...], total }`.
-  - `saleStatus: "all"` returns the whole catalog including `SellOrder: null` rows (514 items, 2026-08) — use **`forSale`** to get active listings only.
+  - `saleStatus: "all"` returns the whole catalog including `SellOrder: null` rows — use **`forSale`** to get active listings only.
+  - **Point lookup:** `GET /dropItems/getByTokenId/{mint}` (detail endpoint spells it lowercase `sellOrder`; normalized by the provider). `provider.getByTokenId()` seam — all six venues implement it.
   - Row: `tokenId` (mint), `owner`/`creatorAddress` (base58), `metadata.name/image/attributes[]` (`year`, `grader`, `grade`, `language`, `pokemon name`, `set name`, `card number`, `serial`, `card type`, `finish`, `edition`), `SellOrder.amountUSDC` (dollar string) + `SellOrder.createdAt` (ms), `altFmv` (Beezie FMV).
   - **Filters:** `filters: [{ filterName, value }]` (keys `grader`, `year`, `setName`, `pokemonName`, `cardNumber`, `cardRarity`, `serialNumber`, `language`, `cardType`, `finish`, `edition`; values have `'` escaped — server builds SQL-ish WHERE). Facets: `GET /marketplace/cards/filters/1`.
   - Delist signal = absence from a complete `forSale` walk (same leave-book discipline as CC). No sold endpoint.
@@ -247,6 +248,13 @@ curl "https://api-mainnet.magiceden.dev/v2/tokens/{mint}/listings"
 - Blockers: no bulk `/orderbook/bids` browse; full bid book requires N asset fetches; signed on-chain bid acceptance out of scope
 
 ## Long-tail (live)
+
+**Module layout** (2026-08): `src/providers/longtail.ts` is a re-export shim;
+implementation lives in `longtailCommon.ts` (shared base class + normalizers),
+`beezieProvider.ts`, `phygitalsProvider.ts`, `renaissDyli.ts`, with the shared
+sequential walk in `pageWalk.ts` and the declarative venue catalog in
+`catalog.ts`. Adding a marketplace = one catalog entry + one set-order line
+in `registry.ts` (see `README.md` / `ARCHITECTURE.md`).
 
 | Site | Endpoints | Notes |
 |------|-----------|--------|

@@ -1,94 +1,109 @@
 # Architecture (first principles)
 
-Goal: **self-serve multi-source radar** — fetch origin marketplace listings fast and correctly for trading decisions. No order placement.
+Goal: **self-serve multi-source radar** — fetch origin marketplace listings fast and correctly for trading decisions, and keep a queryable history + identity layer for programmatic use. No order placement; the library is read-only.
 
 ## Product spine
 
 | Piece | Role |
 |-------|------|
-| **identity** | `listingId(provider, platform, nativeId)` — never array index |
-| **ListingStore** | Idempotent upsert; query-scoped prune; multi-provider coexistence |
+| **Venue-scoped identity** | `listingId(provider, platform, nativeId)` — never array index; stable + collision-free |
+| **Cross-venue card identity** | `cardIdentity.ts` — tcg+set+number+name+year+language+variant (grader/grade excluded by design); structured attrs first, title parser with set dictionary |
+| **ListingStore** | Idempotent upsert; query-scoped prune; multi-provider coexistence; `firstSeenAt`/`lastSeenAt` |
 | **MultiSourceRadar** | Parallel native pulls → one store; filters `tcg` / `platform` / `priceMin`/`priceMax` |
-| **PollEngine / PollScheduler** | Staggered or parallel re-poll (respect CC CDN ~30–60s) without vendor SSE lock-in |
-| **OrderbookFeed** | Asks from merged listings; bids from native `BidsProvider`s (`native: true`) |
+| **PollEngine / PollScheduler** | Staggered or parallel re-poll (respect CC CDN ~30–60s); optional HistoryStore + orderbook + capture hooks |
+| **OrderbookFeed / OrderbookStore** | Asks from merged listings (full depth levels); bids from native `BidsProvider`s; `book()` → best bid/ask/spread + levels |
+| **HistoryStore** | SQLite (node:sqlite, zero deps): append-only new/reprice/closed events + token→identity mapping |
+| **Provider catalog** | `providers/catalog.ts` — the single add-point for a new marketplace |
 
+## Module map
 
-**Latency:** direct multi-source pulls usually beat a single aggregator hop that re-indexes the same origins.
+```
+src/
+  providers/
+    catalog.ts            declarative catalog: id, label, chains, capabilities, factory
+    pageWalk.ts           shared sequential page-walk (tri-state: firstPageEmpty/partial/stoppedAtCap)
+    types.ts              ListingsProvider / PullQuery seams (+ optional getByTokenId)
+    collectorcrypt.ts     CC venue (browse + getCardOffers bids + getByTokenId via ?search=mint)
+    magiceden.ts          ME venue (collection listings + sampled offers + getByTokenId via /v2/tokens/{mint}/listings)
+    courtyard.ts          Courtyard venue (Algolia listings + per-asset orderbook bids + getByTokenId)
+    longtailCommon.ts     LongtailProvider base (transport, fixture, page-walk planner) + normalizers
+    beezieProvider.ts     Beezie Base L2 + Solana (byCategory walks, all-categories walker, getByTokenId)
+    phygitalsProvider.ts  Phygitals (concurrent multi-page walk — deliberate)
+    renaissDyli.ts        single-page venues
+    longtail.ts           re-export shim (public API unchanged)
+    registry.ts           set builders driven by the catalog
+  orderbook/              OrderbookStore (depth levels), OrderbookFeed, instrument keys, BidsProvider seam
+  history/HistoryStore.ts SQLite events + card_identities
+  cardIdentity.ts         CardIdentity model + parser + set dictionary
+  canonical.ts            sameCardListings (identity-key first, name-cluster fallback)
+  aggregate/              MultiSourceRadar, PollEngine (history/orderbook/capture hooks)
+  capture/                RunCapture, ListingChangeLog (file-based run capture)
+  trader/                 alerts, watchlist, health (host-UI surfaces)
+  http/                   fetchWithRetry, pageConcurrency (adaptive), metrics
+  sync.ts                 syncOnce / syncIncremental (prune-safety guards: suspiciouslySmall / massDrop)
+```
 
 ## Layers (native path)
 
 | Layer | Role | Cadence |
 |-------|------|---------|
-| **Native pull** | CC `/marketplace`, ME listings, Courtyard Algolia + `/orderbook/assets/{id}` bids, long-tail | Poll / `syncAll` |
-| **Identity store** | Stable keys, idempotent upsert | Per page / event |
-| **Query scopes** | Filters without wiping other views | Per `syncOnce` |
+| **Native pull** | catalog → venue providers → `pull` / `pullAll` / `getByTokenId` | Poll / `syncAll` / on demand |
+| **Shared walk** | `pageWalk.walkSequentialPages` (Algolia, Beezie); Phygitals concurrent | per page |
+| **Identity store** | stable keys, idempotent upsert, first/last seen | per page / event |
+| **Query scopes** | filters without wiping other views | per `syncOnce` |
+| **History** | PollEngine `history` option → SQLite events + identities | per tick |
+| **Point lookup** | `card <tokenId>` CLI: live listing + bids + lifetime + identity + siblings | on demand |
 
+## Prune safety (sync)
 
-| Layer | Role | Cadence |
-|-------|------|---------|
-| **Snapshot** `GET /api/radar` | Reference baseline | On start; every **60s** while live |
-| **SSE deltas** `GET /api/radar/stream` | Reference low-latency path | Sub-second when markets move |
-
-
-```json
-{"type":"new","row":{...radar row...}}
-{"type":"reprice","row":{...}}
-{"type":"closed","instance_id":"...","platform":"courtyard","reason":"SALE|TRANSFER|BURN"}
-```
-
-Map to store:
-
-- `closed` → `removeOne` (hard tombstone — competitive edge vs soft-stale radar pages)
-
-## Efficiency rules
-
-1. **Identity is the join key** — never array index; double-apply is free.
-2. **Short-circuit snapshots** only when `builtAt` **and** query signature **and** id-set match.
-4. **Reconcile** with periodic snapshot so missed events self-heal.
-5. **Respect CDN** (`max-age=15`) — coalesce identical radar URLs; use `builtAt` for generation changes.
-6. **Closed beats radar lag** — radar can still show sold rows until hide; stream `closed` removes immediately.
-
-## Subset filters
-
-| Where | Mechanism |
-|-------|-----------|
-| Snapshot | Server query params on `/api/radar` + client filters (`maxDelta`, fixture re-filter) |
-| SSE | Client `listingMatchesFilter(snapshotQuery)` — source stream is global |
-| Scope key | `querySignature` includes filter fields so pokemon vs one_piece don't clobber |
+- Soft-fail empty (provider `lastError` + 0 rows) → **never prunes** (transient 200-empty hiccups can't wipe a scope).
+- `hasMore === true` / suspiciouslySmall (≥50% shrink) / massDrop (>10% missing) → upsert-only, no prune.
+- Complete walk (`hasMore=false`) → replace scope → prunes ids that left the retrievable set (delist path → orderbook clear + history `closed`).
 
 ## Orderbook first principles
 
 | Side | Source today |
 |------|----------------|
-| **Asks** | Listings (radar + SSE `new`/`reprice`/`closed`) grouped by instrument key |
+| **Asks** | Listings grouped by instrument key (`name|grader|grade` fallback — cross-venue merge) |
+| **Bids** | CC `getCardOffers`, ME sampled offers, Courtyard per-asset orderbook (budgeted, TOB-level) |
+| **Depth** | `OrderbookStore.book(instrumentKey)` → full levels (price, size, orderCount) |
 
-Competitive book updates for trading decisions:
+## Identity first principles
 
-1. Filtered listing stream → ask upsert/remove  
-2. Optional bids provider stream/poll → bid upsert/remove  
-3. `OrderbookStore.book(instrumentKey)` → best bid/ask/spread  
+1. **Venue-scoped identity is exact** — `listingId(provider:platform:nativeId)`.
+2. **Cross-venue identity is inferred** — structured attributes when the origin provides them (Beezie/Courtyard); set-dictionary title parsing for CC/ME.
+3. **Grade/grader are instrument attributes, not card identity** — a PSA 9 and a CGC 9 of the same card are one card, two instruments.
+4. **Persisted** — `card_identities` in the HistoryStore; `siblingsByToken` answers "where else is this card listed".
 
-## Competitive quality
+## Adding a marketplace
 
-|----------|-----------------------------------|
-| Freshness | SSE path; closed hard-remove |
-| Subset efficiency | Server filters + client SSE filter |
-| Idempotency | Stable ids + upsert equality |
-| Multi-source ready | `ListingsProvider` + `BidsProvider` seams |
-| Decision API | `list()`, orderbook levels, async feed events |
-| Listing age | Optional `lastSeenAt` on upsert (from `fetchedAt`); `isStale(listing, maxAgeMs)` for grey-out after soft-fail |
+1. Write the provider class (subclass `LongtailProvider` for browse APIs, or implement `ListingsProvider`).
+2. Add one entry to `providers/catalog.ts` (id, label, chains, capabilities, factory).
+3. Add the id to the relevant set order array in `registry.ts`.
+
+CLI `card` picks up venues with `supportsGetByTokenId` automatically; PollEngine/radar/history need no changes.
 
 ## Usage
 
 ```ts
-const store = new ListingStore();
-  store,
-  snapshotQuery: { limit: 300, sort: "new", tcg: "pokemon" },
+import {
+  ListingStore, MultiSourceRadar, createSolanaProviders,
+  OrderbookFeed, HistoryStore, sameCardListings,
+} from "traded-listings";
+
+const providers = createSolanaProviders({
+  includeBeezie: true, includeBeezieSolana: true, courtyard: true,
+  beezieAllCategories: true,
 });
-await feed.start();
-for await (const ev of feed) {
-  if (ev.kind === "upsert" && ev.listing.delta != null && ev.listing.delta < -15) {
-    // decision: new under-FMV listing
-  }
-}
+const store = new ListingStore();
+const radar = new MultiSourceRadar({ providers, store, filter: { sort: "new" } });
+
+await radar.syncAll({ bootstrap: true, maxPages: 60 });
+store.lookupByTokenId("<mint>");               // every venue, any scope
+sameCardListings("<mint>", store.list());      // same physical card across venues
+
+const history = new HistoryStore("data/history.db");
+history.cardLifetime("<mint>");                // first/last price, delist, venues
+history.priceHistory("<mint>", 100);           // event stream
+history.siblingsByToken("<mint>");             // other venues' tokens for this card
 ```

@@ -108,7 +108,7 @@ Providers that support multi-page cold fills (`syncOnce` prefers `pullAll` when 
 | **Phygitals** (long-tail) | `pullAll` → `pullPages` (0-based `page`, `itemsPerPage`) | ≤ **200** | **50** | same; mid soft-fail keeps collected rows |
 | **Others** | single `pull` | provider default | n/a | provider `hasMore` / limit |
 
-**Long-tail caps (exported from `longtail.ts`):**
+**Long-tail caps (exported from `longtailCommon.ts`, re-exported via the `longtail.ts` shim):**
 
 | Constant | Value | Role |
 |----------|------:|------|

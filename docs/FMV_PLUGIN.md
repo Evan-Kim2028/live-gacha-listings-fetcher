@@ -46,6 +46,6 @@ Use `applyFmvPlugins` only for rows origins left null (e.g. DYLI, ME listings wi
 | `FmvProvider` seam | `src/fmv/FmvProvider.ts` |
 | Delta helper | `src/fmv/delta.ts` |
 | Test fixture plugin | `src/fmv/FixtureFmvProvider.ts` |
-| CC / ME / longtail normalize | `src/providers/collectorcrypt.ts`, `magiceden.ts`, `longtail.ts`, `courtyard.ts` |
+| CC / ME / longtail normalize | `src/providers/collectorcrypt.ts`, `magiceden.ts`, `longtailCommon.ts` (+ `beezieProvider.ts`, `phygitalsProvider.ts`, `renaissDyli.ts`; `longtail.ts` is a re-export shim), `courtyard.ts` |
 
 See also: `docs/BOOTSTRAP_FULL_BOOK.md` § FMV / delta, `docs/TRADER_EXPERIENCE.md` § FMV policy.

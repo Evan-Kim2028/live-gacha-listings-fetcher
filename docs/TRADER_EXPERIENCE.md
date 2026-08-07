@@ -40,8 +40,10 @@ Client-side OR filter. Empty watchlist matches everything.
 ## Listing age (`src/listingAge.ts`)
 
 - `withLastSeenAt(listing, fetchedAt)` stamps `lastSeenAt` if missing (prefer page `fetchedAt`).
+- `withFirstSeenAt(listing, seenAt, prev)` stamps `firstSeenAt` on first observation and **never re-stamps** — listing age = now − `firstSeenAt` is honest across re-observes.
 - `listingAgeMs` returns ms since `lastSeenAt`, or `null` if unknown.
 - `isStale(listing, maxAgeMs)` is true when age exceeds policy or `lastSeenAt` is unusable. Host UIs grey out after soft-fail windows (e.g. 2–3× poll interval).
+- Origins that expose first-known list time populate `firstListedAt` (CC `createdAt`, Courtyard `listed_at`, Beezie `SellOrder.createdAt`).
 
 ## Links (`src/externalUrl.ts` + `src/trader/deepLinks.ts`)
 
