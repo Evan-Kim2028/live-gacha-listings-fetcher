@@ -31,8 +31,6 @@ export interface SequentialWalkOptions {
   firstPage: 0 | 1;
   /** Optional client-side row cap; walk stops once reached. */
   limit?: number | null;
-  /** Provider label for error messages. */
-  label: string;
 }
 
 export interface WalkResult {

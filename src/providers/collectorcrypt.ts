@@ -637,6 +637,16 @@ export class CollectorCryptProvider implements ListingsProvider {
   private readonly defaultStep: number;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+
+  /**
+   * Point lookup by mint: browse `?search=<nftAddress>&marketplaceStatus=Buy now`
+   * (the mint is searchable server-side; returns the card row when listed).
+   */
+  async getByTokenId(tokenId: string): Promise<Listing | null> {
+    const page = await this.pull({ q: tokenId, limit: 1 });
+    return page.listings[0] ?? null;
+  }
+
   /** Server-side blockchain filter; null omits the query param. */
   private readonly blockchain: string | null;
   private readonly pageConcurrency: AdaptiveConcurrencyOptions;

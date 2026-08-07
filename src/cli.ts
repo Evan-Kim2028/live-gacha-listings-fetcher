@@ -574,17 +574,23 @@ async function runCard(args: string[]): Promise<void> {
     console.error("usage: traded-listings card <tokenId> [--history data/history.db] [--bids]");
     process.exit(1);
   }
-  const { createSolanaProviders, CollectorCryptBidsProvider, CourtyardBidsProvider } = await import("./index.js");
-  const providers = createSolanaProviders({
-    includeBeezie: true,
-    includeBeezieSolana: true,
-    courtyard: true,
-  });
+  const { catalogWithGetByTokenId } = await import("./providers/catalog.js");
+  const { CollectorCryptBidsProvider, CourtyardBidsProvider } = await import("./index.js");
+  // Seed the identity parser's set dictionary (Beezie filters = authoritative).
+  const { seedSetDictionary } = await import("./cardIdentity.js");
+  const { createBeezieProvider } = await import("./index.js");
+  const bzSeed = createBeezieProvider() as unknown as {
+    fetchSetNames(): Promise<string[]>;
+  };
+  const sets = await bzSeed.fetchSetNames().catch(() => [] as string[]);
+  if (sets.length > 0) seedSetDictionary(sets);
   const out: Record<string, unknown> = { tokenId, ts: new Date().toISOString() };
   const listings: Array<Record<string, unknown>> = [];
-  for (const p of providers) {
-    if (typeof p.getByTokenId !== "function") continue;
-    const l = await p.getByTokenId(tokenId);
+  for (const entry of catalogWithGetByTokenId()) {
+    const provider = entry.create();
+    const lookup = provider.getByTokenId;
+    if (!lookup) continue;
+    const l = await lookup.call(provider, tokenId);
     if (l) {
       listings.push({
         provider: l.provider,
@@ -623,11 +629,13 @@ async function runCard(args: string[]): Promise<void> {
     const h = new HistoryStore(resolve(db));
     out.lifetime = h.cardLifetime(tokenId);
     out.priceHistory = h.priceHistory(tokenId, 20);
+    out.identity = h.identityByToken(tokenId);
+    out.sameCardAcrossVenues = h.siblingsByToken(tokenId);
     h.close();
   }
   console.log(JSON.stringify(out, null, 2));
   if (listings.length === 0 && !args.includes("--history")) {
-    console.error(`no active listing found for ${tokenId} on Beezie/Courtyard (CC/ME need a store lookup)`);
+    console.error(`no active listing found for ${tokenId} — check other venues via radar/poll store`);
     process.exit(1);
   }
 }

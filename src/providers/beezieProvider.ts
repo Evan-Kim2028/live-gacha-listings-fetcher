@@ -41,6 +41,19 @@ export class BeezieProvider extends LongtailProvider {
     this.allBeezieCategories = opts.allBeezieCategories ?? false;
   }
 
+
+  /**
+   * Authoritative set-name list for this category (GET /marketplace/cards/
+   * filters/{categoryId} → filters.setName). Seeds the identity parser's
+   * set dictionary so CC/ME titles parse set/name boundaries correctly.
+   */
+  async fetchSetNames(): Promise<string[]> {
+    const url = `${this.baseUrl.endsWith("/") ? this.baseUrl.slice(0, -1) : this.baseUrl}/marketplace/cards/filters/${this.beezieCategoryId}`;
+    const result = await this.fetchGetJson(url);
+    if (result.notModified) return [];
+    const body = result.body as { filters?: { setName?: string[] } } | null;
+    return Array.isArray(body?.filters?.setName) ? body.filters.setName : [];
+  }
   protected override async pullVenue(query: PullQuery): Promise<PullPage> {
     return this.pullBeezie(query);
   }
@@ -148,7 +161,6 @@ export class BeezieProvider extends LongtailProvider {
         pageSize,
         firstPage: solana ? 0 : 1,
         limit: clientLimit,
-        label: "beezie",
       },
     );
 
@@ -242,7 +254,6 @@ export class BeezieProvider extends LongtailProvider {
             maxPages: maxPagesPerCat,
             pageSize,
             firstPage: solana ? 0 : 1,
-            label: `beezie category ${c.name || c.id}`,
           },
         );
         if (one.firstPageEmpty && one.partialError === null) continue;

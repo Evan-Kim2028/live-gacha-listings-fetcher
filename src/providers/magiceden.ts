@@ -407,6 +407,74 @@ export class MagicEdenProvider implements ListingsProvider {
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
   private readonly defaultLimit: number;
+
+  /**
+   * Point lookup by mint: GET /v2/tokens/{mint}/listings (active asks, SOL
+   * price). Returns the first active listing or null. Name is not returned
+   * by this endpoint — the mint short form is used.
+   */
+  async getByTokenId(tokenId: string): Promise<Listing | null> {
+    const url = `${this.baseUrl}/v2/tokens/${encodeURIComponent(tokenId)}/listings`;
+    const res = await fetchWithRetry(
+      url,
+      { headers: { Accept: "application/json", "User-Agent": this.userAgent } },
+      {
+        fetchImpl: this.fetchImpl,
+        maxRetries: this.maxRetries,
+        baseDelayMs: this.retryDelayMs,
+      },
+    );
+    if (!res.ok) {
+      this.lastError = `magiceden getByTokenId HTTP ${res.status}`;
+      return null;
+    }
+    const rows = (await res.json()) as MeListing[];
+    const row = rows?.[0];
+    if (!row?.tokenMint) return null;
+    const sol = mePriceToSol(row.price, row.priceInfo);
+    if (sol == null || sol <= 0) return null;
+    const solUsd =
+      this.opts.solPriceUsd ??
+      (await fetchSolPriceUsd(this.fetchImpl).catch(() => DEFAULT_SOL_USD)) ??
+      DEFAULT_SOL_USD;
+    return {
+      id: listingId({
+        provider: this.id,
+        platform: this.symbol,
+        nativeId: row.tokenMint,
+      }),
+      provider: this.id,
+      platform: this.symbol,
+      nativeId: row.tokenMint,
+      tokenId: row.tokenMint,
+      name: `Magic Eden ${tokenId.slice(0, 8)}…`,
+      price: solToUsd(sol, solUsd),
+      currency: "USD",
+      fmv: null,
+      delta: null,
+      market: "Magic Eden",
+      seller: row.seller ?? null,
+      externalUrl: meListingUrl(row.tokenMint),
+      imageUrl: null,
+      listedAt: null,
+      firstListedAt: null,
+      lastEvent: "LIST",
+      tcg: null,
+      itemType: "card",
+      grader: null,
+      grade: null,
+      gradeNum: null,
+      language: null,
+      setRaw: null,
+      cardNumber: null,
+      year: null,
+      confidence: null,
+      canonical: null,
+      contractAddress: null,
+      searchBlob: tokenId,
+      raw: row,
+    };
+  }
   private readonly defaultMaxPages: number;
   private readonly pageConcurrency: AdaptiveConcurrencyOptions;
   /** Last concurrent page-walk stats. */
