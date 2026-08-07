@@ -3,11 +3,12 @@
  *
  * Real-time strategy (no single SSE for all origins):
  *   PollEngine parallel, minIntervalMs 15–30s per source (CC CDN s-maxage≈30).
- *   Each origin (CC / ME / Phygitals; optional Beezie via includeBeezie) is polled independently.
+ *   Each origin (CC / ME / Phygitals; optional Beezie Base + Solana via --beezie)
+ *   is polled independently.
  *
  *   npx tsx examples/solana-radar.ts
  *   npx tsx examples/solana-radar.ts --poll
- *   npx tsx examples/solana-radar.ts --poll --seconds 30 --interval-ms 20000
+ *   npx tsx examples/solana-radar.ts --beezie --poll --seconds 30 --interval-ms 20000
  */
 import {
   MultiSourceRadar,
@@ -28,12 +29,16 @@ function flagNum(args: string[], name: string): number | undefined {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const doPoll = args.includes("--poll");
+  const useBeezie = args.includes("--beezie");
   const seconds = flagNum(args, "--seconds") ?? 30;
   // 15–30s per source; default 20s for Solana real-time
   const intervalMs = flagNum(args, "--interval-ms") ?? 20_000;
   const limit = flagNum(args, "--limit") ?? 15;
 
-  const providers = createSolanaProviders();
+  const providers = createSolanaProviders({
+    includeBeezie: useBeezie,
+    includeBeezieSolana: useBeezie,
+  });
   const filter = { tcg: "pokemon" as const, limit, sort: "new" as const };
   const radar = new MultiSourceRadar({ providers, filter });
 
@@ -114,9 +119,10 @@ async function main(): Promise<void> {
           .map((l) => ({
             id: l.id,
             provider: l.provider,
+            platform: l.platform,
+            market: l.market,
             price: l.price,
             name: l.name.slice(0, 50),
-            platform: l.platform,
           })),
         bidCount: book.allBids().length,
         askCount: book.allAsks().length,

@@ -393,7 +393,7 @@ describe("Long-tail scaffolds", () => {
     expect(page.listings).toHaveLength(1);
     const L = page.listings[0]!;
     expect(L.provider).toBe("beezie");
-    expect(L.market).toBe("Beezie (EVM)");
+    expect(L.market).toBe("Beezie (Base)");
     expect(L.price).toBe(22);
     const raw = L.raw as { chain?: string; chainNote?: string };
     expect(raw.chain).toBe("evm");
@@ -959,8 +959,53 @@ describe("Long-tail scaffolds", () => {
       metadata: { name: "X", attributes: [] },
       SellOrder: { amountUSDC: "10.00", createdAt: 1 },
     });
-    expect(n?.market).toBe("Beezie (EVM)");
+    expect(n?.market).toBe("Beezie (Base)");
     expect((n?.raw as { chain: string }).chain).toBe("evm");
+    // Base chain note is explicit about the L2 (claw contract verified on basescan.org)
+    expect((n?.raw as { chainNote: string }).chainNote).toMatch(/Base L2/);
+  });
+
+  it("curated layer differentiates Beezie Base vs Solana rows", () => {
+    const base = normalizeLongtailRow(
+      {
+        id: 1,
+        owner: "0x027a1054714a70f26359b05201accdc791999ec0",
+        metadata: { name: "B", attributes: [] },
+        SellOrder: { amountUSDC: "10.00", createdAt: 1 },
+      },
+      "beezie",
+      "beezie",
+    );
+    const sol = normalizeLongtailRow(
+      {
+        id: 2,
+        tokenId: "9e1a4a53JbqkxJ8zpnrDBFJzMp7eHKVAmJfAr89z84K3",
+        owner: "3KkAonK7KXwryorwEUwRbbuUnKiyNP4WLqmUT6bjMqoj",
+        metadata: { name: "S", attributes: [] },
+        SellOrder: { amountUSDC: "20.00", createdAt: 1 },
+      },
+      "beezie-solana",
+      "beezie-solana",
+    );
+    expect(base?.provider).toBe("beezie");
+    expect(base?.platform).toBe("beezie");
+    expect(base?.market).toBe("Beezie (Base)");
+    expect((base?.raw as { chain: string }).chain).toBe("evm");
+    expect(sol?.provider).toBe("beezie-solana");
+    expect(sol?.platform).toBe("beezie-solana");
+    expect(sol?.market).toBe("Beezie (Solana)");
+    expect((sol?.raw as { chain: string }).chain).toBe("solana");
+    // identity namespaces never collide across venues
+    expect(base?.id).not.toBe(sol?.id);
+    expect(base?.id.startsWith("beezie:beezie:")).toBe(true);
+    expect(sol?.id.startsWith("beezie-solana:beezie-solana:")).toBe(true);
+    // same venue, same native id → same identity (idempotent upsert key)
+    const baseDup = normalizeLongtailRow(
+      { id: 1, owner: "0x027a1054714a70f26359b05201accdc791999ec0", metadata: { name: "B", attributes: [] }, SellOrder: { amountUSDC: "11.00", createdAt: 2 } },
+      "beezie",
+      "beezie",
+    );
+    expect(baseDup?.id).toBe(base?.id);
   });
 
   it("renaiss/dyli normalize", () => {
