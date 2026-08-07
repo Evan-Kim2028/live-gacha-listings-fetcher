@@ -18,7 +18,6 @@ import {
   ListingStore,
   createCourtyardProvider,
   saveBook,
-  resolveBookDir,
   isStale,
   querySignature,
 } from "../src/index.js";
