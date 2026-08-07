@@ -233,6 +233,8 @@ curl "https://api-mainnet.magiceden.dev/v2/tokens/{mint}/listings"
 ## Courtyard
 
 - Listings: Algolia app `Y8TL3M06QA`, index `marketplace_prod_recently_listed` (no bid/offer Algolia index)
+- **Full book:** `CourtyardProvider.pullAll` walks 100/page until the Algolia deep-pagination cap; the retrievable pokemon book is **~1.8k–3.1k rows and the boundary shifts between runs** (facet `nbHits` says ~219k but pages past the cap return empty). `pullAll` reports the walk as complete (`hasMore=false`, honest total) so delist pruning works; sync's mass-drop guards keep boundary shrinkage from mass-pruning (see `docs/COURTYARD_E2E_QA.md`).
+- **QA runbook:** `examples/courtyard-e2e-qa.ts` — bootstrap → quality report → curation → warm poll with delist capture (`data/runs/courtyard-e2e-<iso>/report.json`, book in `data/books/courtyard-pokemon/`).
 - REST base `https://api.courtyard.io` — browser-like `User-Agent` + Origin/Referer; bare curl often 403 WAF
 - Working unauth:
   - `GET /orderbook/config` → on-chain addresses
