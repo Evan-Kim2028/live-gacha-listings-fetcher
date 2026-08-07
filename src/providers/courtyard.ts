@@ -48,6 +48,12 @@ const DEFAULT_API_BASE = "https://api.courtyard.io";
 /** Browser-like UA — bare curl without UA often 403 WAF on orderbook routes. */
 const DEFAULT_BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+/** Default walk page cap for pullAll (Algolia deep cap ≈ 3.1k hits / 32 pages of 100). */
+const COURTYARD_MAX_PAGES_DEFAULT = 50;
+/** Hard ceiling for a Courtyard page walk. */
+const COURTYARD_MAX_PAGES_CAP = 500;
+/** Default page size for full-book walks. */
+const COURTYARD_PAGE_SIZE = 100;
 
 /** Known on-chain addresses (Polygon). Prefer live /orderbook/config when available. */
 export const COURTYARD_ONCHAIN = {
@@ -247,6 +253,89 @@ export class CourtyardProvider implements ListingsProvider {
     this.cookie = opts.cookie;
     this.maxRetries = opts.maxRetries ?? 3;
     this.retryDelayMs = opts.retryDelayMs ?? 500;
+  }
+
+  /**
+   * Full-book walk: page through Algolia until the end of the retrievable
+   * universe (or `maxPages` / `limit`). Algolia stops returning hits past its
+   * deep-pagination cap (~1k records), so the walk ends naturally with an
+   * empty page. Soft-fail mid-walk keeps rows already collected; a soft
+   * empty (lastError set, zero rows) never prunes the prior scope.
+   */
+  async pullAll(
+    query: PullQuery & { maxPages?: number } = {},
+  ): Promise<PullPage> {
+    if (query.fixturePath || query.offline) return this.pull(query);
+    const maxPages = Math.max(
+      1,
+      Math.min(
+        query.maxPages ?? COURTYARD_MAX_PAGES_DEFAULT,
+        COURTYARD_MAX_PAGES_CAP,
+      ),
+    );
+    const pageSize = Math.min(query.limit ?? COURTYARD_PAGE_SIZE, 100);
+    const clientLimit = query.limit;
+    const all: Listing[] = [];
+    let offset = 0;
+    let total: number | null = null;
+    let hasMore = false;
+    let partialError: string | null = null;
+    for (let page = 0; page < maxPages; page++) {
+      try {
+        const one = await this.pull({ ...query, offset, limit: pageSize });
+        if (one.listings.length === 0) {
+          // Algolia deep-pagination cap / index end: the walk is complete
+          // relative to what the API will return. Report a finished book so
+          // sync's prune path can delist rows that left the retrievable set.
+          hasMore = false;
+          total = all.length;
+          break;
+        }
+        total = one.meta.total ?? total;
+        all.push(...one.listings);
+        hasMore = one.hasMore;
+        if (!one.hasMore) break;
+        if (clientLimit != null && all.length >= clientLimit) break;
+        offset += pageSize;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (all.length === 0) {
+          this.lastError = `courtyard soft-fail page ${page}: ${msg}`;
+          return {
+            listings: [],
+            hasMore: false,
+            meta: {
+              provider: this.id,
+              builtAt: null,
+              total: 0,
+              universe: 0,
+              fetchedAt: new Date().toISOString(),
+              querySignature: "",
+            },
+          };
+        }
+        partialError = msg;
+        this.lastError = `courtyard partial multi-page after ${all.length} rows (page ${page}): ${msg}`;
+        hasMore = true;
+        break;
+      }
+    }
+    if (!partialError) this.lastError = null;
+    const listings = clientLimit != null ? all.slice(0, clientLimit) : all;
+    return {
+      listings,
+      hasMore:
+        hasMore &&
+        (clientLimit == null || all.length < (total ?? Infinity)),
+      meta: {
+        provider: this.id,
+        builtAt: new Date().toISOString(),
+        total: total ?? listings.length,
+        universe: total ?? listings.length,
+        fetchedAt: new Date().toISOString(),
+        querySignature: "",
+      },
+    };
   }
 
   async pull(query: PullQuery = {}): Promise<PullPage> {
