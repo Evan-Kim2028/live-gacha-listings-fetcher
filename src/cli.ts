@@ -139,6 +139,7 @@ function buildProviders(args: string[]): ListingsProvider[] {
     all: useAll,
     courtyard: useCy || useAll,
     magiceden: noMe ? false : undefined,
+    beezieAllCategories: flagStr(args, "--tcg") === "all",
   });
   // --me is default; keep for docs symmetry
   return providers;

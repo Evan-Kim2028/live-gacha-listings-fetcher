@@ -12,6 +12,9 @@
 import { readFile } from "node:fs/promises";
 import { contentFingerprint } from "../contentFingerprint.js";
 import {
+  walkSequentialPages,
+} from "./pageWalk.js";
+import {
   beezieSolanaListingUrl,
   dyliListingUrl,
   originProvidedUrl,
@@ -991,64 +994,69 @@ export class LongtailProvider implements ListingsProvider {
       ),
     );
     const clientLimit = query.limit;
-    const all: Listing[] = [];
     const counts = emptyChainCounts();
     const solana = this.id === "beezie-solana";
-    let page = solana ? 0 : 1;
-    let total: number | null = null;
-    let lastPageSize = pageSize;
-    let hasMore = false;
-    let partialError: string | null = null;
-
-    // EVM pages are 1-based (inclusive cap maxPages); Solana 0-based (exclusive cap)
-    for (; page < (solana ? maxPages : maxPages + 1); page++) {
-      try {
+    const walk = await walkSequentialPages(
+      async (offset) => {
         const one = await this.pullBeezie({
           ...query,
           categoryId,
-          offset: solana ? page * pageSize : (page - 1) * pageSize,
+          offset,
           limit: undefined, // API ignores limit; fixed page size
         });
-        lastPageSize = one.listings.length || pageSize;
-        if (one.meta.total != null) total = one.meta.total;
         for (const l of one.listings) {
-          all.push(l);
           const raw = l.raw as { chain?: BeezieChain } | undefined;
           const c = raw?.chain ?? "unknown";
           counts[c] = (counts[c] ?? 0) + 1;
         }
-        hasMore = one.hasMore;
-        if (!one.hasMore || one.listings.length === 0) break;
-        if (clientLimit != null && all.length >= clientLimit) break;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        // Soft-fail: keep prior pages; never throw away a partial multi-page book
-        if (all.length === 0) {
-          this.lastError = `beezie soft-fail page ${page}: ${msg} — ${this.statusNote}`;
-          return emptyMeta(this.id, [], false, 0, { softFail: true });
-        }
-        partialError = msg;
-        this.lastError = `beezie partial multi-page after ${all.length} rows (page ${page}): ${msg}`;
-        hasMore = true;
-        break;
-      }
+        return {
+          listings: one.listings,
+          hasMore: one.hasMore,
+          total: one.meta.total ?? null,
+        };
+      },
+      {
+        maxPages,
+        pageSize,
+        firstPage: solana ? 0 : 1,
+        limit: clientLimit,
+        label: "beezie",
+      },
+    );
+
+    // Ambiguous empty first page (200 + 0 rows, no exception): treat as
+    // soft-fail so sync never wipes a populated scope. (Multi-category walks
+    // interpret this as legitimately empty via firstPageEmpty.)
+    if (walk.firstPageEmpty && walk.partialError === null) {
+      this.lastError = `beezie empty page (0 rows) — treated as soft-fail — ${this.statusNote}`;
+      return emptyMeta(this.id, [], false, 0, { softFail: true });
+    }
+    if (walk.firstPageEmpty && walk.partialError !== null) {
+      this.lastError = `beezie soft-fail page: ${walk.partialError} — ${this.statusNote}`;
+      return emptyMeta(this.id, [], false, 0, { softFail: true });
+    }
+    if (walk.partialError) {
+      this.lastError = `beezie partial multi-page after ${walk.listings.length} rows: ${walk.partialError}`;
+    } else {
+      this.lastError = null;
     }
 
     const listings =
-      clientLimit != null ? all.slice(0, clientLimit) : all;
-    if (!partialError) this.lastError = null;
+      clientLimit != null ? walk.listings.slice(0, clientLimit) : walk.listings;
     this.lastBeezieMeta = {
-      page: Math.min(page, maxPages),
-      pageSize: lastPageSize,
-      total,
+      // 0-based venues: last fetched page index; 1-based: page number.
+      page: Math.max(walk.pagesFetched - (solana ? 1 : 0), 0),
+      pageSize,
+      total: walk.total ?? listings.length,
       chainCounts: counts,
       dominantChain: dominantChain(counts),
     };
     return emptyMeta(
       this.id,
       listings,
-      hasMore && (clientLimit == null || all.length < (total ?? Infinity)),
-      total ?? listings.length,
+      walk.hasMore &&
+        (clientLimit == null || walk.listings.length < (walk.total ?? Infinity)),
+      walk.total ?? listings.length,
     );
   }
 
@@ -1082,28 +1090,51 @@ export class LongtailProvider implements ListingsProvider {
     let total = 0;
     let anyOk = false;
     const failures: string[] = [];
+    const solana = this.id === "beezie-solana";
+    const pageSize = solana ? BEEZIE_SOLANA_PAGE_SIZE : BEEZIE_PAGE_SIZE;
     for (const c of cats) {
       try {
-        const one = await this.pullBeeziePages({
-          ...query,
-          categoryId: String(c.id),
-          limit: undefined,
-          maxPages: maxPagesPerCat,
-        });
-        // pullBeeziePages swallows per-page errors: detect via soft/partial
-        // page markers instead of exceptions.
-        const softEmpty = one.meta.builtAt === null && one.listings.length === 0;
-        if (softEmpty) {
-          failures.push(
-            `${c.name || c.id}: ${this.lastError ?? "soft-fail empty"}`,
-          );
+        // Walk this category on the shared sequential walker for explicit
+        // tri-state semantics (no ambiguity via builtAt heuristics):
+        //  - firstPageEmpty + no error → legitimately empty category (the
+        //    NORMAL state — most categories have 0 forSale items) → 0 rows,
+        //    no failure
+        //  - hard failure (exception) → failure (whole walk incomplete so
+        //    sync never prunes the beezie scope on a broken category)
+        //  - partial walk (rows kept) → rows are real; mass-drop guards
+        //    bound any missing-category prune
+        const one = await walkSequentialPages(
+          async (offset) => {
+            const pg = await this.pullBeezie({
+              ...query,
+              categoryId: String(c.id),
+              offset,
+              limit: undefined,
+            });
+            return {
+              listings: pg.listings,
+              hasMore: pg.hasMore,
+              total: pg.meta.total ?? null,
+            };
+          },
+          {
+            maxPages: maxPagesPerCat,
+            pageSize,
+            firstPage: solana ? 0 : 1,
+            label: `beezie category ${c.name || c.id}`,
+          },
+        );
+        if (one.firstPageEmpty && one.partialError === null) continue;
+        if (one.partialError) {
+          failures.push(`${c.name || c.id}: ${one.partialError}`);
           continue;
         }
-        if (one.hasMore) failures.push(`${c.name || c.id}: partial walk`);
         if (one.listings.length > 0) anyOk = true;
-        total += one.meta.total ?? one.listings.length;
+        total += one.total ?? one.listings.length;
         all.push(...one.listings);
       } catch (e) {
+        // Hard failure (categories fetch ok but the walk threw): mark
+        // incomplete so sync never prunes the whole beezie scope.
         failures.push(`${c.name || c.id}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
@@ -1240,6 +1271,16 @@ export class LongtailProvider implements ListingsProvider {
 
     if (walk.notModified) {
       return emptyMeta(this.id, [], false, null, { etag });
+    }
+
+    if (walk.listings.length === 0 && !partialError) {
+      // 200-empty first page with no exception: treat as soft-fail so sync
+      // never replaces a prior scope with an empty snapshot (wipe).
+      this.lastError = "phygitals empty first page (0 rows) — treated as soft-fail";
+      return emptyMeta(this.id, [], false, null, {
+        etag,
+        softFail: true,
+      });
     }
 
     if (partialError && walk.listings.length === 0) {
