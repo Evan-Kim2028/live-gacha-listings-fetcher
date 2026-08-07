@@ -81,6 +81,7 @@ poll.start();
 | `magiceden` | yes | CC collection listings + sampled offers |
 | `phygitals` | yes | Soft-fail on outage (no book wipe) |
 | `courtyard` | opt-in | Polygon; `courtyard: true` via `--courtyard` (works with `--solana`) |
+| all categories | `--tcg all` | every category each venue carries (Beezie loops all `/dropItems/categories`; CC/Courtyard/Phygitals drop their category facet). Live all-venue sync ≈ 17.7k rows (2026-08-07) |
 | `beezie` | opt-in EVM | `includeBeezie` / `includeEvm` |
 | `beezie-solana` | opt-in | Solana-native (solana.beezie.com); `includeBeezieSolana` |
 | `renaiss` / `dyli` | no | Origin APIs; see NATIVE_SOURCES |

@@ -9,6 +9,7 @@
  *   npx tsx examples/solana-radar.ts
  *   npx tsx examples/solana-radar.ts --poll
  *   npx tsx examples/solana-radar.ts --beezie --courtyard --poll --seconds 30 --interval-ms 20000
+ *   npx tsx examples/solana-radar.ts --beezie --courtyard --tcg all --limit 100  # every category
  */
 import {
   MultiSourceRadar,
@@ -31,6 +32,9 @@ async function main(): Promise<void> {
   const doPoll = args.includes("--poll");
   const useBeezie = args.includes("--beezie");
   const useCourtyard = args.includes("--courtyard");
+  const tcgRaw = flagStr(args, "--tcg") ?? "pokemon";
+  const allCategories = tcgRaw === "all";
+  const tcg = allCategories ? undefined : tcgRaw;
   const seconds = flagNum(args, "--seconds") ?? 30;
   // 15–30s per source; default 20s for Solana real-time
   const intervalMs = flagNum(args, "--interval-ms") ?? 20_000;
@@ -40,8 +44,13 @@ async function main(): Promise<void> {
     includeBeezie: useBeezie,
     includeBeezieSolana: useBeezie,
     courtyard: useCourtyard,
+    beezieAllCategories: allCategories,
   });
-  const filter = { tcg: "pokemon" as const, limit, sort: "new" as const };
+  const filter = {
+    ...(tcg ? { tcg: tcg as "pokemon" } : {}),
+    limit,
+    sort: "new" as const,
+  };
   const radar = new MultiSourceRadar({ providers, filter });
 
   // --- One-shot timed total pull ---
