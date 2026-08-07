@@ -42,7 +42,7 @@ function usage(): never {
   traded-listings [radar|native] [--solana] [--all] [--beezie] [--tcg pokemon] [--platform cc|me] [--price-min N] [--price-max N] [--limit N] [--watch 'charizard,pikachu'] [--watch-file path] [--me|--no-me] [--courtyard] [--urls]
   traded-listings bootstrap [--solana|--all] [--beezie] [--tcg pokemon] [--max-pages N] [--limit N] [--watch ...] [--watch-file path] [--resume] [--out data/books/<scope>] [--poll] [--seconds N] [--offline]
   traded-listings poll [--all] [--solana] [--beezie] [--seconds N] [--interval-ms N] [--parallel] [--tcg pokemon] [--limit N] [--watch ...] [--watch-file path] [--no-me]
-  traded-listings monitor [--offline] [--all] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
+  traded-listings monitor [--offline] [--all] [--beezie] [--seconds N] [--interval-ms N] [--out data/runs/<auto>] [--sample N]
   traded-listings sync [--live] [--limit N] [--fixture path] [--provider collectorcrypt|magiceden|courtyard|fixture]
 
 Default command: radar (native MultiSourceRadar)
