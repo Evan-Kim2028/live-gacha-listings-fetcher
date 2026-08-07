@@ -1,8 +1,8 @@
 # Trader experience
 
-Read-only surfaces for host UIs and operators: alerts, watchlist, health, listing age, deep-links, and origin-only FMV. Core never buys, lists, offers, or signs transactions.
+Read-only surfaces for host UIs and operators: alerts, watchlist, health, listing age, deep-links, and origin-only FMV. Core surfaces data only; buy/list/offer/tx live in the host.
 
-**Sold / delisted (leave-book):** poll-diff prune → `applyDelistsFromSync` → orderbook clear + `sold.jsonl` (`delisted_or_sold`). Soft-fail never wipes inventory. See [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
+**Sold / delisted (leave-book):** poll-diff prune → `applyDelistsFromSync` → orderbook clear + `sold.jsonl` (`delisted_or_sold`). Soft-fail keeps inventory intact. See [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
 
 ## Alerts (`src/trader/alerts.ts`)
 
@@ -17,7 +17,7 @@ Read-only surfaces for host UIs and operators: alerts, watchlist, health, listin
 | `under_fmv` | origin already set `fmv` + `delta`, and `delta < 0` |
 
 - `onSyncResult`: short-circuit → no listing alerts; soft-fail → `soft_fail` only; else `onListingsDiff`.
-- `under_fmv` uses `hasOriginUnderFmv` / `underFmvAlertIfAny` only. Core never invents FMV.
+- `under_fmv` uses `hasOriginUnderFmv` / `underFmvAlertIfAny` only. Core uses origin FMV only.
 - `alertMatches` / `filterAlerts` apply `PullQuery` (`maxDelta`, `requireFmv`, tcg, platform, price bands) via `listingMatchesFilter`. Soft-fail always passes.
 
 ## Watchlist (`src/watchlist.ts`)
@@ -35,12 +35,12 @@ Client-side OR filter. Empty watchlist matches everything.
 - HTTP metrics (`pulls`, `errors`, `latency_ms`)
 - `PollEngine` stats (`syncs`, `shortCircuits`, `shortCircuitRate`)
 
-`formatHealthHud` prints a terminal multi-line table (see `examples/trader-hud.ts`). Soft-fail on one origin does not clear sibling watermarks.
+`formatHealthHud` prints a terminal multi-line table (see `examples/trader-hud.ts`). Sibling watermarks survive soft-fail on one origin.
 
 ## Listing age (`src/listingAge.ts`)
 
 - `withLastSeenAt(listing, fetchedAt)` stamps `lastSeenAt` if missing (prefer page `fetchedAt`).
-- `withFirstSeenAt(listing, seenAt, prev)` stamps `firstSeenAt` on first observation and **never re-stamps** — listing age = now − `firstSeenAt` is honest across re-observes.
+- `withFirstSeenAt(listing, seenAt, prev)` stamps `firstSeenAt` once on first observation — listing age = now − `firstSeenAt` stays honest across re-observes.
 - `listingAgeMs` returns ms since `lastSeenAt`, or `null` if unknown.
 - `isStale(listing, maxAgeMs)` is true when age exceeds policy or `lastSeenAt` is unusable. Host UIs grey out after soft-fail windows (e.g. 2–3× poll interval).
 - Origins that expose first-known list time populate `firstListedAt` (CC `createdAt`, Courtyard `listed_at`, Beezie `SellOrder.createdAt`).

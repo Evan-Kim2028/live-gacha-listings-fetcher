@@ -6,7 +6,7 @@ Goal: **self-serve multi-source radar** — fetch origin marketplace listings fa
 
 | Piece | Role |
 |-------|------|
-| **Venue-scoped identity** | `listingId(provider, platform, nativeId)` — never array index; stable + collision-free |
+| **Venue-scoped identity** | `listingId(provider, platform, nativeId)` — stable primary key, collision-free |
 | **Cross-venue card identity** | `cardIdentity.ts` — tcg+set+number+name+year+language+variant (grader/grade excluded by design); structured attrs first, title parser with set dictionary |
 | **ListingStore** | Idempotent upsert; query-scoped prune; multi-provider coexistence; `firstSeenAt`/`lastSeenAt` |
 | **MultiSourceRadar** | Parallel native pulls → one store; filters `tcg` / `platform` / `priceMin`/`priceMax` |
@@ -56,7 +56,7 @@ src/
 
 ## Prune safety (sync)
 
-- Soft-fail empty (provider `lastError` + 0 rows) → **never prunes** (transient 200-empty hiccups can't wipe a scope).
+- Soft-fail empty (provider `lastError` + 0 rows) → prune deferred; a transient 200-empty keeps the scope intact.
 - `hasMore === true` / suspiciouslySmall (≥50% shrink) / massDrop (>10% missing) → upsert-only, no prune.
 - Complete walk (`hasMore=false`) → replace scope → prunes ids that left the retrievable set (delist path → orderbook clear + history `closed`).
 

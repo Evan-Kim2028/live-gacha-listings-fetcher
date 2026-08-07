@@ -33,10 +33,9 @@ createSolanaProviders()  = [collectorcrypt, magiceden(collector_crypt), phygital
 // opt-in Beezie Solana (native): createSolanaProviders({ includeBeezieSolana: true })
 ```
 
-Parallel origin hops usually finish faster than waiting on one aggregator re-scrape.
-CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30s.
+Parallel origin hops beat a single aggregator re-scrape. CC CDN `Cache-Control: s-maxage≈30`; PollEngine `minIntervalMs` defaults to 30s.
 
-`MultiSourceRadar.syncAll` uses **`Promise.allSettled`** (per-provider soft-fail): a throwing origin leaves other results intact. **Phygitals** never throws on 5xx; it returns an empty page + `provider.lastError`, and radar copies that into `result.errors` so the fan-out always continues.
+`MultiSourceRadar.syncAll` uses **`Promise.allSettled`** (per-provider soft-fail): a throwing origin leaves other results intact. **Phygitals** returns an empty page + `provider.lastError` on 5xx; radar copies that into `result.errors` and the fan-out continues.
 
 ## Solana (`createSolanaProviders`)
 
@@ -56,13 +55,13 @@ CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30
 
 **Opt-in Courtyard (cross-chain):** `createSolanaProviders({ courtyard: true })` appends `courtyard` (Polygon — Algolia `marketplace_prod_recently_listed` + on-chain orderbook bids). `--solana --courtyard` on the CLI. Poké category is facet-filtered server-side at Algolia.
 
-**All categories (`--tcg all`):** drops the category filter on every venue — CC/Courtyard/Phygitals omit their category param/facet, and Beezie walks **every** enabled `/dropItems/categories` (via `allBeezieCategories: true` on the provider) and merges into one scope. Live all-venue sync ≈ **17.7k rows** (2026-08-07: Phygitals 8.5k, ME 4.4k, CC 3k, Courtyard 1.4k, Beezie Base 915, Beezie Solana 2), zero errors. Semantics (post adversarial review): categories with 0 active listings are **legitimately empty** (200+empty is the normal state for most categories) and do not fail the walk; only a **hard failure** (exception) marks the walk incomplete (`hasMore=true` → upsert-only, never prunes).
+**All categories (`--tcg all`):** drops the category filter on every venue — CC/Courtyard/Phygitals omit their category param/facet, and Beezie walks **every** enabled `/dropItems/categories` (via `allBeezieCategories: true` on the provider) and merges into one scope. Live all-venue sync ≈ **17.7k rows** (2026-08-07: Phygitals 8.5k, ME 4.4k, CC 3k, Courtyard 1.4k, Beezie Base 915, Beezie Solana 2), zero errors. Semantics: categories with 0 active listings are **legitimately empty** (200+empty is the normal state for most categories); only a **hard failure** (exception) marks the walk incomplete (`hasMore=true` → upsert-only, prune deferred).
 
 `createDefaultProviders({ all: true })` multi-venue path now includes `beezie-solana` next to EVM `beezie`.
 
-### Real-time update cadence (no single SSE)
+### Real-time update cadence
 
-Solana does not use one SSE stream for all origins. Freshness is **PollEngine parallel** with **per-source `minIntervalMs` 15–30s** (default **20s** CLI / example; hard floor driven by CC CDN `s-maxage≈30`).
+Freshness comes from **PollEngine parallel** with **per-source `minIntervalMs` 15–30s** (default **20s** CLI / example; hard floor driven by CC CDN `s-maxage≈30`).
 
 | Mode | What runs | Cadence |
 |------|-----------|---------|
@@ -70,8 +69,6 @@ Solana does not use one SSE stream for all origins. Freshness is **PollEngine pa
 | Live | `PollEngine({ parallel: true, minIntervalMs: 15_000–30_000 })` | Each origin re-pulled when due; independent of others |
 | CLI | `traded-listings poll --solana --seconds 60 --tcg pokemon` | Defaults: parallel on, interval 20s, 60s wall clock |
 | Example | `examples/solana-radar.ts` / `--poll` | Timed one-shot; optional 30s poll loop |
-
-Origins (CC, ME, Phygitals) have different APIs, CDNs, and failure modes, so there is no single SSE. Parallel per-source poll keeps a slow/5xx origin from blocking others and avoids aggregator SSE lock-in.
 
 ### Beezie chain note (Base L2, not Solana)
 
@@ -82,7 +79,7 @@ Live `owner` / `creatorAddress` values are **EVM** (`0x` + 40 hex) on **Base L2*
   - `listing.market` → `"Beezie (Base)"` (or `"Beezie (Solana)"` for the solana venue, `"Beezie"` when unclassified)
   - `listing.raw.chain` → `"evm" | "solana" | "unknown"`
   - `listing.raw.chainNote` → short operator note
-- Pull retries on 429/5xx/network. **`pullAll`** (used by `syncOnce`) multi-pages when `limit` needs more than one page; `pullPages({ maxPages })` for explicit walks. Caps: page ~**20** fixed, **`LONGTAIL_MAX_PAGES_CAP` = 50**. Mid-walk failure soft-keeps collected rows; total soft-empty never prunes prior store scope.
+- Pull retries on 429/5xx/network. **`pullAll`** (used by `syncOnce`) multi-pages when `limit` needs more than one page; `pullPages({ maxPages })` for explicit walks. Caps: page ~**20** fixed, **`LONGTAIL_MAX_PAGES_CAP` = 50**. Mid-walk failure soft-keeps collected rows; total soft-empty keeps the prior scope.
 - Filter Solana-only books with `listing.raw.chain !== "evm"` (or drop `provider === "beezie"`).
 
 ### Beezie Solana (native, `beezie-solana`)
@@ -133,7 +130,7 @@ Provider: `src/providers/collectorcrypt.ts`.
 | Param | Notes |
 |-------|--------|
 | `search` | Substring / exact on nftAddress |
-| `marketplaceStatus` | CSV; **`Buy now` = listed** (always set by provider). **Delist signal** = card id missing from a complete full-scope `pullAll` under this filter — not a sold endpoint. |
+| `marketplaceStatus` | CSV; **`Buy now` = listed** (always set by provider). **Delist signal** = card id missing from a complete full-scope `pullAll` under this filter (origin exposes no sold endpoint). |
 | `marketplaceSource` | `CC` \| `ME` |
 | `listPriceMin` / `listPriceMax` | USDC |
 | `categories` | `Pokemon`, `Baseball`, … |
@@ -150,7 +147,7 @@ Provider: `src/providers/collectorcrypt.ts`.
 
 #### Offer detail (bids harvest)
 
-Browse alone does not return prices. The CC web app loads priced offers via unauthenticated JSON-RPC:
+Priced offers come from unauthenticated JSON-RPC (browse rows carry offer refs only):
 
 ```bash
 curl -X POST "https://api.collectorcrypt.com/" \
@@ -160,7 +157,7 @@ curl -X POST "https://api.collectorcrypt.com/" \
 
 - Returns array of `{ id, price, currency, status, buyer: { wallet }, … }`
 - `useV2: true` required for V2 escrow offers (`useV2: false` → `[]` in probes)
-- Card page helpers: `GET /cards/publicNft/{mint}` (no offers), `GET …/market` (listing only), `GET …/offers` = sync `{synced}` not a book
+- Card page helpers: `GET /cards/publicNft/{mint}` (no offers), `GET …/market` (listing only), `GET …/offers` = sync `{synced}` (a sync receipt, no book)
 - No public GET `/marketplace/offers/:id` (404). Documented offer routes are write/tx builders only.
 
 `CollectorCryptBidsProvider`: browse → sample mints with offer refs → concurrent `getCardOffers` → `BidOrder[]`.
@@ -222,16 +219,16 @@ curl "https://api-mainnet.magiceden.dev/v2/tokens/{mint}/listings"
 | `hasMore` | Inferred: `rows.length >= limit` (full page ⇒ try next offset) |
 | Cold path | `syncOnce` → `pullAll` → `pullPages` until empty / `!hasMore` / `maxPages` / desired `limit` |
 | Defaults | page limit 20; when `maxPages` omitted, `ceil(desiredLimit / pageLimit)` capped by **`ME_DEFAULT_MAX_PAGES` = 50** (~5k rows at limit 100) |
-| Soft-fail | HTTP/network/parse → empty page + `lastError` (never throws on live); mid-pagination error keeps partial book |
+| Soft-fail | HTTP/network/parse → empty page + `lastError`; mid-pagination error keeps partial book |
 
-**Full-universe blockers (cannot guarantee entire ME collection book):**
+**Full-universe limits (ME):**
 
-1. **No total count** — stop condition is heuristic (short page); cannot assert “complete universe” without stats side-channel.
-2. **`limit` ≤ 100** and **public rate limits / 429** — large scans need retries + conservative `maxPages`; unbounded offset loops are unsafe.
-3. **Safety ceiling** — default `ME_DEFAULT_MAX_PAGES` (50) caps accidental full-scan; raise explicitly for research (`pullAll({ limit: 10_000, maxPages: 200 })`).
-4. **Collection churn** — listings change while paging; adjacent offsets can overlap or skip under concurrent cancel/relist.
-5. **No bulk dump / auth export** — public listings API only; not a marketplace data dump.
-6. **Offers are not listings** — full bid book still requires N× `offers_received` (see bids budget).
+1. Stop condition is heuristic (short page) — the origin exposes no total count.
+2. `limit` ≤ **100**; public rate limits (429) — large scans use retries + conservative `maxPages`.
+3. Safety ceiling `ME_DEFAULT_MAX_PAGES` (50) caps accidental full-scan; raise explicitly for research (`pullAll({ limit: 10_000, maxPages: 200 })`).
+4. Collection churn — adjacent offsets can overlap or skip under concurrent cancel/relist.
+5. Public listings API only (no bulk dump / auth export).
+6. Bid book requires N× `offers_received` calls (see bids budget).
 
 ## Courtyard
 
@@ -261,7 +258,7 @@ in `registry.ts` (see `README.md` / `ARCHITECTURE.md`).
 | **Beezie** | `POST https://api.beezie.com/dropItems/byCategory` body `{filters:[], saleStatus:"forSale", sort, page:"1", categoryId:"1"}`; `GET …/categories`; `GET …/getByTokenId/:id` | **EVM** owners (`0x…`); SellOrder.amountUSDC; page ~**20**; `pullAll` multi-page bootstrap (cap **50** pages); mid-page fail keeps partial; Cloudflare needs UA |
 | **Renaiss** | `GET https://www.renaiss.xyz/api/trpc/collectible.list?input=…` | askPriceInUSDT in **wei (1e18)**; offer.* auth; single-page only |
 | **DYLI** | `GET https://www.dyli.io/api/explore`, `/explore/top`, `/search/products?searchTerm=` | products[].price / lowest_price; single-page only |
-| **Phygitals** | `GET …/marketplace-listings`, `GET …/filters` | **Public API** (no key): `page` (0-based), `itemsPerPage` (≤**200**), `listedStatus=listed`, `sortBy`, `metadataConditions` (JSON), `priceRange`/`fmvRange`, `searchTerm`. Docs: https://phygitals.mintlify.app/public-api/marketplace/listings. **`pullAll` multi-page** for bootstrap (`LONGTAIL_MAX_PAGES_CAP` **50**). Bare `limit`/`offset` alone often **500**. Response `listings[]` + `amount`; `price` micro-USDC (÷1e6). Soft-empty 5xx + `lastError` (never throws) → **no prune**. Successful complete `listedStatus=listed` page (`hasMore === false`) **may prune** absences (delist path). Mid multi-page soft-fail keeps collected rows. Fixture: `fixtures/phygitals-sample.json`. See `docs/SOLD_TAKEDOWN.md`. |
+| **Phygitals** | `GET …/marketplace-listings`, `GET …/filters` | **Public API** (no key): `page` (0-based), `itemsPerPage` (≤**200**), `listedStatus=listed`, `sortBy`, `metadataConditions` (JSON), `priceRange`/`fmvRange`, `searchTerm`. Docs: https://phygitals.mintlify.app/public-api/marketplace/listings. **`pullAll` multi-page** for bootstrap (`LONGTAIL_MAX_PAGES_CAP` **50**). Bare `limit`/`offset` alone often **500**. Response `listings[]` + `amount`; `price` micro-USDC (÷1e6). Soft-empty 5xx + `lastError` → prune deferred. Successful complete `listedStatus=listed` page (`hasMore === false`) prunes absences (delist path). Mid multi-page soft-fail keeps collected rows. Fixture: `fixtures/phygitals-sample.json`. See `docs/SOLD_TAKEDOWN.md`. |
 
 ## Rate limits / etiquette
 
@@ -271,7 +268,7 @@ in `registry.ts` (see `README.md` / `ARCHITECTURE.md`).
 | ME | Public; listings `limit` ≤ 100 + offset; batch mint offers carefully; use `pullAll` maxPages ceiling |
 | Courtyard | WAF without browser-like client; Algolia for listings |
 | Beezie | UA required; Zod-validated POST body; fixed page ~20; multi-page cap 50; EVM addresses only (flagged) |
-| Phygitals | `itemsPerPage` ≤ 200; multi-page cap 50; soft-fail empty never wipes store scope |
+| Phygitals | `itemsPerPage` ≤ 200; multi-page cap 50; soft-fail empty keeps store scope |
 
 ## What we will not do
 
@@ -287,7 +284,7 @@ in `registry.ts` (see `README.md` / `ARCHITECTURE.md`).
 | **Bids depth** | No bulk bid browse anywhere (CC N× `getCardOffers`; ME per-mint `offers_received`; Courtyard N× per-asset orderbook). **O(N) mitigated** via shared bid budget: `sampleSize` + `maxConcurrent` + per-key `ttlMs` cache (`mapWithBidBudget`) — see [BIDS_BUDGET.md](./BIDS_BUDGET.md). |
 | **Renaiss offers** | `offer.*` tRPC requires auth; asks only unauth |
 | **Beezie chain** | Live catalog is **EVM** (flagged on `raw.chain`); excluded from default Solana set; opt-in via `includeBeezie` / `includeEvm` |
-| **Phygitals** | Origin 5xx common → soft-empty + `lastError`; not a hard guarantee of rows |
+| **Phygitals** | Origin 5xx common → soft-empty + `lastError`; rows best-effort |
 | **Courtyard WAF** | Needs browser-like UA/Origin; no Algolia bid index |
 | **CC write/tx** | list/buy/offer/broadcast builders documented, out of scope for this read library |
 | **Freshness** | PollEngine only (15–30s); no unified native SSE |

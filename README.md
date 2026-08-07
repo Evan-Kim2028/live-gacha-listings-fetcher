@@ -16,11 +16,8 @@ npm test
 
 # Full seed + warm poll (lean capture: health + sold only)
 npx tsx examples/runtime-monitor.ts \
-  --bootstrap \
-  --resume \
-  --seconds 21600 \
-  --interval-ms 20000 \
-  --max-pages 500 \
+  --bootstrap --resume --seconds 21600 \
+  --interval-ms 20000 --max-pages 500 \
   --book-out data/books/full-solana-pokemon \
   --out data/runs/live-full
 
@@ -62,7 +59,7 @@ saveBook({
   outDir: "data/books/my-book",
 });
 
-// Warm: keep the same filter (changing limit/tcg opens a new scope)
+// Warm: reuse the same filter so the scope stays open
 const poll = new PollEngine({
   store: radar.store,
   providers,
@@ -73,20 +70,20 @@ const poll = new PollEngine({
 poll.start();
 ```
 
-## Card lookup & history (programmatic surface)
+## Card lookup & history
 
 ```bash
-# Live point lookup of one token across ALL six venues (CC ?search=mint,
-# ME /v2/tokens/{mint}/listings, Beezie getByTokenId, Courtyard
-# orderbook/assets): current listing, price, FMV, first-listed, deep-link.
+# Point lookup of one token across all six venues
+# (CC ?search=mint, ME /v2/tokens/{mint}/listings, Beezie getByTokenId,
+# Courtyard orderbook/assets): listing, price, FMV, first-listed, deep-link.
 # --bids adds CC getCardOffers + Courtyard per-asset orderbook depth.
 npx tsx src/cli.ts card <tokenId> --bids
 
 # Durable price/lifetime history (SQLite, zero deps). Feed it from any poll:
 npx tsx src/cli.ts poll --solana --courtyard --seconds 3600 --history data/history.db
 
-# Then query per-token history: first seen, price range, reprice count,
-# delist time, active status, venues; plus the raw event stream.
+# Per-token history: first seen, price range, reprice count, delist time,
+# active status, venues; plus the raw event stream.
 npx tsx src/cli.ts history <tokenId> --db data/history.db
 
 # card --history also prints the parsed cross-venue card identity
@@ -94,17 +91,17 @@ npx tsx src/cli.ts history <tokenId> --db data/history.db
 ```
 
 Library: `store.lookupByTokenId(tokenId)` (all venues), `provider.getByTokenId?`
-seam, `Listing.firstSeenAt` (stamped on first observation, never re-stamped),
+seam, `Listing.firstSeenAt` (stamped once on first observation),
 `HistoryStore` (recordSyncResult / recordDelists / priceHistory / cardLifetime /
 identityByToken / siblingsByToken), `sameCardListings(tokenId, listings)` for
 cross-venue identity (grade/grader-independent: a PSA 9 and a CGC 9 of the
 same card cluster as one card). `OrderbookStore.book()` returns full bid/ask
-depth levels, not just TOB.
+depth levels.
 
 **Adding a marketplace:** write the provider class, add one entry to
 `src/providers/catalog.ts` (id, label, chains, capabilities, factory), and add
-the id to the set order array in `registry.ts`. CLI `card`, radar, polls and
-history pick it up with no further changes.
+the id to the set order array in `registry.ts`. The CLI, radar, polls and
+history pick it up automatically.
 
 ## Providers
 
@@ -112,12 +109,12 @@ history pick it up with no further changes.
 |----|----------------|--------|
 | `collectorcrypt` | yes | Official marketplace API |
 | `magiceden` | yes | CC collection listings + sampled offers |
-| `phygitals` | yes | Soft-fail on outage (no book wipe) |
+| `phygitals` | yes | Soft-fail on outage; scope survives |
 | `courtyard` | opt-in | Polygon; `courtyard: true` via `--courtyard` (works with `--solana`) |
 | all categories | `--tcg all` | every category each venue carries (Beezie loops all `/dropItems/categories`; CC/Courtyard/Phygitals drop their category facet). Live all-venue sync ≈ 17.7k rows (2026-08-07) |
-| `beezie` | opt-in EVM | `includeBeezie` / `includeEvm` |
+| `beezie` | opt-in (Base L2) | `includeBeezie` / `includeEvm` |
 | `beezie-solana` | opt-in | Solana-native (solana.beezie.com); `includeBeezieSolana` |
-| `renaiss` / `dyli` | no | Origin APIs; see NATIVE_SOURCES |
+| `renaiss` / `dyli` | opt-in | Origin APIs; see NATIVE_SOURCES |
 | `fixture` | tests | Offline |
 
 ```ts
@@ -135,7 +132,7 @@ await syncOnce(store, getProvider("collectorcrypt"), {
 
 When a listing leaves a complete full-scope page, the store prunes it. `PollEngine` / `MultiSourceRadar` call `applyDelistsFromSync` when `pruned > 0`: clear orderbook asks (and residual bids when the instrument is empty), append `sold.jsonl` with last bid/ask.
 
-Soft-fail and incomplete pages never prune. Last TOB is not a proven on-chain fill. Details: [`docs/SOLD_TAKEDOWN.md`](docs/SOLD_TAKEDOWN.md).
+Pruning runs only on complete pages; soft-fail and incomplete pages keep the existing scope. `sold.jsonl` records the last observed TOB. Details: [`docs/SOLD_TAKEDOWN.md`](docs/SOLD_TAKEDOWN.md).
 
 ## Core pieces
 
@@ -148,7 +145,7 @@ Soft-fail and incomplete pages never prune. Last TOB is not a proven on-chain fi
 | `OrderbookFeed` | Asks from listings; bids from CC/ME/Courtyard providers |
 | `RunCapture` | Lean: health + sold. Full: events + books + snapshots |
 
-Identity: `id` is never array index. Optional `lastSeenAt` stamps successful applies; soft-fail does not refresh it (`isStale`).
+Identity: `id` is a stable primary key. `lastSeenAt` refreshes on successful applies (`isStale` greys out rows past policy age); `firstSeenAt` stamps once on first observation.
 
 ## Develop
 

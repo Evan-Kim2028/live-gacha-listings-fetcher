@@ -28,7 +28,7 @@ npx tsx examples/runtime-monitor.ts --bootstrap --full-capture --seconds 3600
 
 Also documented in root `README.md` (Quick start: full book seed).
 
-**Sold / delisted:** when a listing leaves a provider page, the store prunes it (`closed`); `MultiSourceRadar` / `PollEngine` call `applyDelistsFromSync` when `pruned > 0` so the orderbook clears asks **and** residual bids and `sold.jsonl` records `lastBestAsk` / `lastBestBid` (last known TOB, not a proven on-chain fill). Full product model: [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
+**Sold / delisted:** when a listing leaves a provider page, the store prunes it (`closed`); `MultiSourceRadar` / `PollEngine` call `applyDelistsFromSync` when `pruned > 0` so the orderbook clears asks **and** residual bids and `sold.jsonl` records `lastBestAsk` / `lastBestBid` (last observed TOB). Full product model: [`docs/SOLD_TAKEDOWN.md`](SOLD_TAKEDOWN.md).
 
 ## Goal
 
@@ -173,7 +173,7 @@ Warm ticks call `syncOnce` with the engine filter. Unchanged inventory short-cir
 
 `syncNow()` is one parallel force-tick (`allSettled`); failed origins omit from the result array and surface via `onError` / watermarks.
 
-## Soft-fail empty must never wipe a large book
+## Soft-fail empty keeps the book intact
 
 **Invariant:** a bad origin response with **zero listings + `provider.lastError`** must **not** call `replaceScopeSnapshot`. Prior scope rows, meta generation, and success watermark stamps stay.
 
