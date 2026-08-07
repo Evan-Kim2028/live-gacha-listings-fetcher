@@ -150,7 +150,7 @@ export function normalizeCourtyardAlgoliaHit(
     currency,
     fmv: fmv != null && Number.isFinite(fmv) ? fmv : null,
     delta: deltaFromListing(p, fmv, currency),
-    market: "Courtyard",
+    market: "Courtyard (Polygon)",
     seller: hit.ownerAddress ?? hit.latestListing?.maker ?? meta.OwnerAddress ?? null,
     // Prefer origin http(s) URL when present; else stable courtyard.io asset page.
     externalUrl: originProvidedUrl(hit) ?? courtyardListingUrl(tokenId),
@@ -201,7 +201,7 @@ export function normalizeCourtyardRow(
     currency: String(row.currency ?? "USDC"),
     fmv: row.fmv == null ? null : Number(row.fmv),
     delta: null,
-    market: "Courtyard",
+    market: "Courtyard (Polygon)",
     seller: (row.seller as string) ?? null,
     // Prefer origin http(s) URL when present; else stable courtyard.io asset page.
     externalUrl: originProvidedUrl(row) ?? courtyardListingUrl(tokenId),

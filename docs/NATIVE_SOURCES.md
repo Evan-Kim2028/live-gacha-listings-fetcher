@@ -47,11 +47,14 @@ CC CDN `Cache-Control: s-maxage≈30`. PollEngine `minIntervalMs` defaults to 30
 | `collectorcrypt` | `CollectorCryptProvider` | Solana USDC marketplace |
 | `magiceden` | `MagicEdenProvider` | Collection symbol **`collector_crypt`** (default) |
 | `phygitals` | `createPhygitalsProvider` | Official browse params; micro-USDC → USD; soft empty + `lastError` on outage |
+| `courtyard` (opt-in) | `createCourtyardProvider` | **Polygon** — Algolia listings + orderbook bids; `--solana --courtyard` |
 
 
 **Opt-in Beezie (old breadth):** `createSolanaProviders({ includeBeezie: true })` or `createSolanaProviders({ includeEvm: true })` inserts `beezie` between ME and Phygitals.
 
 **Opt-in Beezie Solana (native):** `createSolanaProviders({ includeBeezieSolana: true })` appends `beezie-solana` (solana.beezie.com — Solana mints, USDC SellOrders). Live book is thin (~2–20 listings as of 2026-08); full pull is a few cheap POST pages, so it is fine to bootstrap + poll like any native source.
+
+**Opt-in Courtyard (cross-chain):** `createSolanaProviders({ courtyard: true })` appends `courtyard` (Polygon — Algolia `marketplace_prod_recently_listed` + on-chain orderbook bids). `--solana --courtyard` on the CLI. Poké category is facet-filtered server-side at Algolia.
 
 `createDefaultProviders({ all: true })` multi-venue path now includes `beezie-solana` next to EVM `beezie`.
 
